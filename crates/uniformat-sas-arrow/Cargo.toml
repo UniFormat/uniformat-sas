@@ -1,0 +1,39 @@
+[package]
+name = "uniformat-sas-arrow"
+description = "Adaptateur Arrow : schéma et lots RecordBatch"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# Adaptateur asynchrone object_store (ADR 0002) : S3, HTTP, fichiers locaux.
+object-store = ["dep:object_store", "dep:futures", "dep:tokio", "dep:bytes"]
+
+[dependencies]
+uniformat-sas = { workspace = true }
+uniformat-sas-io = { workspace = true }
+uniformat-core = { workspace = true }
+arrow-array = "59.2"
+arrow-schema = "59.2"
+arrow-cast = "59.2"
+thiserror = { workspace = true }
+object_store = { version = "0.13", optional = true, default-features = false }
+futures = { version = "0.3", optional = true }
+tokio = { version = "1", optional = true, features = ["rt"] }
+bytes = { version = "1", optional = true }
+
+[dev-dependencies]
+arrow-select = "59.2"
+proptest = { workspace = true }
+uniformat-testkit = { workspace = true }
+# Tests de l'adaptateur object_store : magasin local et serveur HTTP de test.
+object_store = { version = "0.13", features = ["fs", "http"] }
+futures = "0.3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+
+[lints]
+workspace = true
