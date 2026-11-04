@@ -1,0 +1,38 @@
+schema: spec-driven
+
+context: |
+  Language: French
+  All artifacts must be written in French.
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Projet : driver Rust lecture/écriture des fichiers SAS .sas7bdat (métadonnées, formats,
+  encodages, compression), exposé en R et Python, interrogeable en SQL (DataFusion), et
+  réutilisable plus tard comme source type Dremio / Arrow Flight.
+  src/ : sous-ensemble minimal de SAS 9.4 (ELF x86-64 Linux, UTF-8), en lecture seule,
+  utilisé comme oracle et cible de reverse engineering (licence Apache, interopérabilité).
+  prompts/ : série de prompts 00 à 06 qui définit les phases ; prompts/README.md fixe les
+  conventions (confiance confirmé/inféré/inconnu, modèle d'entrée de spec, rea_output/STATE.md,
+  séparation analyse/conception : la conception Rust ne lit que les documents de spec).
+  Hôte : macOS ; SAS doit tourner dans un Linux x86-64 (conteneur, VM ou machine distante).
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
