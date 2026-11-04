@@ -1,0 +1,42 @@
+# ADR 0007 §4 : aucune licence copyleft forte dans le graphe de production.
+[graph]
+all-features = true
+# Politique de l'ADR 0007 §4 : le graphe de production. Les dépendances de test (client HTTP d'`object_store`)
+# n'y figurent pas.
+exclude-dev = true
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    # Dédicace au domaine public (tiny-keccak, via arrow-array → ahash → const-random) : permissive, sans copyleft.
+    "CC0-1.0",
+    # rust-numpy (dépendance de pyo3-arrow, liaison Python) : BSD-2-Clause, permissive.
+    "BSD-2-Clause",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Dépendances par chemin entre crates du workspace (jamais publiées en l'état : publish = false).
+allow-wildcard-paths = true
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = [
+    # `paste` (macros procédurales, à la compilation seulement) n'est plus maintenu ; aucune vulnérabilité connue.
+    # Tiré par extendr-api (paquet R). À lever quand extendr s'en passera ; décision journalisée en J5.
+    { id = "RUSTSEC-2024-0436", reason = "crate non maintenue, sans faille connue ; macros de compilation (extendr-api)" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
