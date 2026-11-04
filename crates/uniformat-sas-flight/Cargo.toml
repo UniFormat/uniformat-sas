@@ -1,0 +1,36 @@
+[package]
+name = "uniformat-sas-flight"
+description = "Service Arrow Flight (jalon J7)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "uniformat-sas-flight-server"
+path = "src/main.rs"
+
+[dependencies]
+uniformat-sas = { workspace = true }
+uniformat-sas-io = { workspace = true }
+uniformat-sas-arrow = { workspace = true }
+arrow-array = "59.2"
+arrow-schema = "59.2"
+arrow-flight = "59.2"
+tonic = "0.14"
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync"] }
+tokio-stream = { version = "0.1", features = ["net"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+
+[dev-dependencies]
+uniformat-testkit = { workspace = true }
+arrow-select = "59.2"
+
+[lints]
+workspace = true
