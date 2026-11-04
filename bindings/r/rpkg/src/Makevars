@@ -13,7 +13,7 @@ all: $(SHLIB)
 # cargo décide lui-même s'il faut reconstruire (étape toujours exécutée)
 .PHONY: cargo-build
 cargo-build:
-	cargo build --lib --release --features r --manifest-path="$(CRATE_DIR)/Cargo.toml" --target-dir="$(TARGET_DIR)"
+	cargo build --locked --lib --release --features r --manifest-path="$(CRATE_DIR)/Cargo.toml" --target-dir="$(TARGET_DIR)"
 
 $(SHLIB): cargo-build
 

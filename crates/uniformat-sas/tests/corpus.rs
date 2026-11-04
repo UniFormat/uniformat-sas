@@ -6,11 +6,9 @@
 use uniformat_testkit::{Corpus, ReferenceTable};
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn corpus_inventory_matches_manifest() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let files = corpus.files().expect("lecture du corpus");
     // 232 fichiers analysés par 10 §9 : files/ (SAS complet) + external/ (fichiers publics).
     assert_eq!(

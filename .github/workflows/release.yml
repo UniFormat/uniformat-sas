@@ -1,31 +1,44 @@
 name: release
-# Builds wheels and the Flight server for a tag. It does NOT publish to crates.io, PyPI or CRAN.
+# Build artifacts only; publication to registries remains manual.
 on:
   push:
     tags: ["v*"]
+permissions:
+  contents: read
 jobs:
   wheels:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           path: uniformat-sas
-      - name: Sibling checkout
-        env:
-          GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
-        run: |
-          for r in uniformat-core uniformat-conformance; do
-            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/UniFormat/${r}.git" "$r"
-          done
-      - uses: PyO3/maturin-action@v1
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniFormat/uniformat-core
+          ref: 5afd0cf15c22c82ef0cf1bf0fecdb54cd0e2abd9
+          path: uniformat-core
+          token: ${{ secrets.CI_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: UniFormat/uniformat-conformance
+          ref: f060db8122e642e9fb2950d3bdbf4e6a8a19da07
+          path: uniformat-conformance
+          token: ${{ secrets.CI_TOKEN || github.token }}
+          persist-credentials: false
+      - uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b
         with:
           working-directory: uniformat-sas/bindings/python
-          args: --release --out dist
+          args: --locked --release --out dist
           manylinux: auto
-      - uses: actions/upload-artifact@v4
+          maturin-version: "1.16.0"
+          rust-toolchain: "1.99.1"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: wheels-${{ matrix.os }}
           path: uniformat-sas/bindings/python/dist/*.whl

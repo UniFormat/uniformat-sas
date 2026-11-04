@@ -5,6 +5,7 @@
 #![deny(unsafe_code)]
 
 pub mod convert;
+mod read_budget;
 
 #[cfg(feature = "r")]
 #[allow(unsafe_code)]

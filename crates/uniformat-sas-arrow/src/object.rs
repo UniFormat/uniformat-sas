@@ -8,7 +8,6 @@
 //! (≈ `group_bytes`). Soit au plus `2 + nombre de groupes` requêtes (plan rapide).
 
 use std::borrow::Cow;
-use std::collections::VecDeque;
 use std::io;
 use std::ops::Range;
 use std::sync::Arc;
@@ -103,7 +102,8 @@ impl ObjectFile {
     /// Erreur du magasin, ou de format.
     pub async fn open(store: Arc<dyn ObjectStore>, path: Path, opts: ReadOptions) -> Result<Self> {
         let size = store.head(&path).await?.size;
-        let mut want = size.min(PREFIX_BYTES);
+        let prefix_limit = opts.max_metadata_bytes as u64;
+        let mut want = size.min(PREFIX_BYTES).min(prefix_limit);
         let file = loop {
             let data = store.get_range(&path, 0..want).await?;
             let src = PrefixSource { data, size };
@@ -111,7 +111,14 @@ impl ObjectFile {
                 Ok(f) => break f,
                 Err(e) => match beyond_prefix(&e) {
                     Some(needed) if want < size => {
-                        want = size.min(needed.max(want.saturating_mul(2)));
+                        if needed > prefix_limit {
+                            return Err(Error::ResourceLimit(
+                                "métadonnées distantes trop volumineuses",
+                            ));
+                        }
+                        want = size
+                            .min(prefix_limit)
+                            .min(needed.max(want.saturating_mul(2)));
                     }
                     _ => return Err(e.into()),
                 },
@@ -173,12 +180,24 @@ impl ObjectFile {
             return Ok(self.file.page_plan(PlanMode::Fast)?);
         }
         let h = &meta.header;
+        // A remote store can advertise an enormous object without transferring its contents.
+        // Bound the full-plan vectors before any allocation or per-page network requests.
+        if h.page_count > (self.opts.max_metadata_bytes / 64) as u64 {
+            return Err(Error::ResourceLimit(
+                "plan de pages distant trop volumineux",
+            ));
+        }
         let head_len = PageHeader::header_len(h) as u64;
         let mut infos: Vec<PageInfo> = self.file.scanned_pages().to_vec();
         let mut scratch = ReadReport::new(Strictness::Lenient);
         let start = infos.len() as u64;
-        let pages: Vec<u64> = (start..h.page_count).collect();
-        for chunk in pages.chunks(PLAN_BATCH) {
+        let mut next_page = start;
+        while next_page < h.page_count {
+            let end = next_page
+                .saturating_add(PLAN_BATCH as u64)
+                .min(h.page_count);
+            let chunk: Vec<u64> = (next_page..end).collect();
+            next_page = end;
             let ranges: Vec<Range<u64>> = chunk
                 .iter()
                 .map(|&k| {
@@ -208,6 +227,9 @@ impl ObjectFile {
     ) -> Result<BoxStream<'static, Result<RecordBatch>>> {
         let h = &self.file.meta().header;
         let page_len = u64::from(h.page_length).max(1);
+        if group.pages.start > group.pages.end || group.pages.end > h.page_count {
+            return Err(Error::Unsupported("plage de pages distante invalide"));
+        }
         let rows_before = match &plan {
             Some(p) if p.is_splittable() => group.rows_before,
             _ => 0,
@@ -221,13 +243,19 @@ impl ObjectFile {
             rows_before,
         )?;
         let per = (self.opts.group_bytes / page_len).max(1);
-        let mut chunks = Vec::new();
+        // Keep only the current range: precomputing every range makes LIMIT ineffective
+        // against an attacker-controlled remote object size.
         let mut start = group.pages.start;
-        while start < group.pages.end {
-            let end = start.saturating_add(per).min(group.pages.end);
-            chunks.push(start..end);
+        let last = group.pages.end;
+        let chunks = std::iter::from_fn(move || {
+            if start >= last {
+                return None;
+            }
+            let end = start.saturating_add(per).min(last);
+            let range = start..end;
             start = end;
-        }
+            Some(range)
+        });
         let (store, path) = (Arc::clone(&self.store), self.path.clone());
         let (hl, plen) = (u64::from(h.header_length), page_len);
         let fetches = stream::iter(chunks)
@@ -245,74 +273,69 @@ impl ObjectFile {
             fetches: BoxStream<'static, Result<(u64, Bytes)>>,
             assembler: Option<BatchAssembler>,
             plan: Option<Arc<PagePlan>>,
-            ready: VecDeque<RecordBatch>,
+            pending: Option<(u64, Bytes, usize)>,
             done: bool,
         }
         let state = State {
             fetches,
             assembler: Some(assembler),
             plan,
-            ready: VecDeque::new(),
+            pending: None,
             done: false,
         };
         Ok(stream::unfold(state, |mut st| async move {
             loop {
-                if let Some(b) = st.ready.pop_front() {
-                    return Some((Ok(b), st));
-                }
                 if st.done {
                     return None;
                 }
                 let mut asm = st.assembler.take()?;
                 if asm.limit_reached() {
                     st.done = true;
-                    let last = asm.take_batch();
-                    st.assembler = Some(asm);
-                    match last {
-                        Ok(Some(b)) => return Some((Ok(b), st)),
-                        Ok(None) => return None,
-                        Err(e) => return Some((Err(e), st)),
-                    }
+                    return asm.take_batch().transpose().map(|batch| (batch, st));
                 }
-                match st.fetches.next().await {
-                    None => {
-                        st.done = true;
-                        let last = asm.take_batch();
+                let (first_page, bytes, mut pos) = match st.pending.take() {
+                    Some(pending) => pending,
+                    None => match st.fetches.next().await {
+                        None => {
+                            st.done = true;
+                            return asm.take_batch().transpose().map(|batch| (batch, st));
+                        }
+                        Some(Err(e)) => {
+                            st.done = true;
+                            return Some((Err(e), st));
+                        }
+                        Some(Ok((first, bytes))) => (first, bytes, 0),
+                    },
+                };
+                let plan = st.plan.clone();
+                // Decode at most one output batch. Accumulating all expanded batches of an
+                // input group defeats a per-batch budget when projection/compression amplifies it.
+                let joined = tokio::task::spawn_blocking(move || {
+                    let batch =
+                        decode_next_batch(&mut asm, first_page, &bytes, &mut pos, plan.as_deref());
+                    (asm, bytes, pos, batch)
+                })
+                .await;
+                match joined {
+                    Ok((asm, bytes, pos, Ok(batch))) => {
                         st.assembler = Some(asm);
-                        match last {
-                            Ok(Some(b)) => return Some((Ok(b), st)),
-                            Ok(None) => return None,
-                            Err(e) => return Some((Err(e), st)),
+                        if pos < bytes.len() {
+                            st.pending = Some((first_page, bytes, pos));
+                        }
+                        if let Some(batch) = batch {
+                            return Some((Ok(batch), st));
                         }
                     }
-                    Some(Err(e)) => {
+                    Ok((_, _, _, Err(e))) => {
                         st.done = true;
                         return Some((Err(e), st));
                     }
-                    Some(Ok((first_page, bytes))) => {
-                        let plan = st.plan.clone();
-                        let joined = tokio::task::spawn_blocking(move || {
-                            let r = decode_group(&mut asm, first_page, &bytes, plan.as_deref());
-                            (asm, r)
-                        })
-                        .await;
-                        match joined {
-                            Ok((asm, Ok(batches))) => {
-                                st.assembler = Some(asm);
-                                st.ready.extend(batches);
-                            }
-                            Ok((_, Err(e))) => {
-                                st.done = true;
-                                return Some((Err(e), st));
-                            }
-                            Err(_) => {
-                                st.done = true;
-                                return Some((
-                                    Err(Error::Unsupported("tâche de décodage interrompue")),
-                                    st,
-                                ));
-                            }
-                        }
+                    Err(_) => {
+                        st.done = true;
+                        return Some((
+                            Err(Error::Unsupported("tâche de décodage interrompue")),
+                            st,
+                        ));
                     }
                 }
             }
@@ -339,27 +362,27 @@ impl ObjectFile {
     }
 }
 
-/// Décode les pages d'un groupe et rend les lots complets ; le dernier lot partiel reste dans l'assembleur.
-fn decode_group(
+/// Decode only until the next complete batch; keep the remaining input group for the next poll.
+fn decode_next_batch(
     asm: &mut BatchAssembler,
     first_page: u64,
     bytes: &[u8],
+    pos: &mut usize,
     plan: Option<&PagePlan>,
-) -> Result<Vec<RecordBatch>> {
+) -> Result<Option<RecordBatch>> {
     let plen = usize::try_from(asm.page_length())
         .unwrap_or(usize::MAX)
         .max(1);
-    let mut out = Vec::new();
-    for (i, page) in bytes.chunks_exact(plen).enumerate() {
-        if asm.limit_reached() {
-            break;
-        }
-        asm.push_page(first_page.saturating_add(i as u64), page, plan)?;
+    if !bytes.len().is_multiple_of(plen) {
+        return Err(Error::Unsupported("groupe de pages distant tronqué"));
+    }
+    while *pos < bytes.len() && !asm.limit_reached() {
+        let index = first_page.saturating_add((*pos / plen) as u64);
+        asm.push_page(index, &bytes[*pos..*pos + plen], plan)?;
+        *pos += plen;
         if asm.is_full() {
-            if let Some(b) = asm.take_batch()? {
-                out.push(b);
-            }
+            return asm.take_batch();
         }
     }
-    Ok(out)
+    Ok(None)
 }

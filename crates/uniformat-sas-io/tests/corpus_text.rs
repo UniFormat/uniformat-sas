@@ -8,11 +8,9 @@ use uniformat_testkit::Corpus;
 const EXPECTED: [&[u8]; 3] = [b"ab\xffdef", b"ab\x80d\xc3\xa9", b"abcd\xe6\x97"];
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn invalid_bytes_policies() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let path = corpus.root().join("gen/probe/enc/files/enc_inv.sas7bdat");
     let file = SasFile::open(
         FileSource::open(&path).expect("ouverture"),

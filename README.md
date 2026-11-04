@@ -44,7 +44,7 @@ dependencies.
 
 ```bash
 cargo test --workspace --exclude uniformat-sas-py            # unit tests
-UNIFORMAT_CORPUS=/path/to/corpus cargo test --workspace --exclude uniformat-sas-py   # + corpus tests
+UNIFORMAT_CORPUS=/path/to/corpus cargo test --workspace --exclude uniformat-sas-py -- --ignored   # optional corpus tests
 ci/check_core_deps.sh && python3 -I ci/gen_tables.py --check
 cd bindings/python && maturin develop --release && pytest      # Python
 R CMD INSTALL bindings/r/rpkg                                   # R
@@ -58,3 +58,7 @@ files of `uniformat-conformance/data` can be used instead.
 
 0.1, **not published**. License `MIT OR Apache-2.0`, provisional. `docs/spec` and `tests/data` derive from analysis of
 files and a licensed runtime; keep this repository private until the licensing review is complete.
+
+## Sécurité
+
+Les limites de ressources, les tests synthétiques obligatoires, les conditions d'exposition de Flight et les commandes d'audit sont décrits dans [docs/security.md](docs/security.md). Les tests utilisant le corpus externe sont désormais explicitement ignorés par défaut ; ils se lancent avec `UNIFORMAT_CORPUS=...` et `--ignored`.

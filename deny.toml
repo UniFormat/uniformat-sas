@@ -1,9 +1,8 @@
 # ADR 0007 §4 : aucune licence copyleft forte dans le graphe de production.
 [graph]
 all-features = true
-# Politique de l'ADR 0007 §4 : le graphe de production. Les dépendances de test (client HTTP d'`object_store`)
-# n'y figurent pas.
-exclude-dev = true
+# Les dépendances de test sont aussi auditées : un outil CI vulnérable fait partie du périmètre.
+exclude-dev = false
 
 [licenses]
 allow = [
@@ -20,6 +19,10 @@ allow = [
     "BSD-2-Clause",
 ]
 confidence-threshold = 0.9
+# Trust-anchor data distributed by the TLS verifier, not a relicensing of our code.
+exceptions = [
+    { crate = "webpki-root-certs@1.0.11", allow = ["CDLA-Permissive-2.0"] },
+]
 
 [bans]
 multiple-versions = "warn"
@@ -30,11 +33,10 @@ allow-wildcard-paths = true
 [advisories]
 version = 2
 yanked = "deny"
-ignore = [
-    # `paste` (macros procédurales, à la compilation seulement) n'est plus maintenu ; aucune vulnérabilité connue.
-    # Tiré par extendr-api (paquet R). À lever quand extendr s'en passera ; décision journalisée en J5.
-    { id = "RUSTSEC-2024-0436", reason = "crate non maintenue, sans faille connue ; macros de compilation (extendr-api)" },
-]
+unmaintained = "all"
+unsound = "all"
+# paste reste signalé comme non maintenu via extendr 0.9 ; aucun avis n'est masqué.
+ignore = []
 
 [sources]
 unknown-registry = "deny"

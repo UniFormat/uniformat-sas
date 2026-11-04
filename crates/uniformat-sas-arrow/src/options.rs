@@ -90,6 +90,13 @@ pub struct ReadOptions {
     pub encoding_override: Option<&'static Encoding>,
     /// Lignes visées par lot (un lot s'arrête à la fin de la page qui atteint ce seuil).
     pub batch_rows: usize,
+    /// Budget conservateur des buffers d'un lot (64 Mio), hors métadonnées et buffers d'entrée.
+    /// Une page qui dépasse ce budget est refusée avant d'accumuler ses valeurs.
+    pub max_batch_bytes: usize,
+    /// Nombre maximal de colonnes de sortie, répétitions et sidecars compris.
+    pub max_output_columns: usize,
+    /// Préfixe maximal téléchargé pour ouvrir un objet distant (64 Mio).
+    pub max_metadata_bytes: usize,
     /// Cas non vérifiés par la spécification (ADR 0006).
     pub strictness: Strictness,
     /// Construction du plan de pages.
@@ -112,6 +119,9 @@ impl Default for ReadOptions {
             empty_as_null: false,
             encoding_override: None,
             batch_rows: 8192,
+            max_batch_bytes: 64 * 1024 * 1024,
+            max_output_columns: 16_384,
+            max_metadata_bytes: 64 * 1024 * 1024,
             strictness: Strictness::Lenient,
             plan: PlanMode::Fast,
             group_bytes: 8 * 1024 * 1024,

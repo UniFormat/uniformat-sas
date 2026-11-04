@@ -117,6 +117,8 @@ pub fn read_options(options: &BTreeMap<String, String>) -> Result<ReadOptions> {
             "encoding",
             "strict",
             "batch_rows",
+            "max_batch_bytes",
+            "max_output_columns",
             "plan",
         ],
     )?;
@@ -199,12 +201,17 @@ pub fn read_options(options: &BTreeMap<String, String>) -> Result<ReadOptions> {
                     Strictness::Lenient
                 };
             }
-            "batch_rows" => {
-                o.batch_rows = v
+            "batch_rows" | "max_batch_bytes" | "max_output_columns" => {
+                let n: usize = v
                     .parse()
                     .map_err(|_| Error::option(k, "expected a positive number"))?;
-                if o.batch_rows == 0 {
+                if n == 0 {
                     return Err(Error::option(k, "expected a positive number"));
+                }
+                match k.as_str() {
+                    "batch_rows" => o.batch_rows = n,
+                    "max_batch_bytes" => o.max_batch_bytes = n,
+                    _ => o.max_output_columns = n,
                 }
             }
             "plan" => o.plan = choice(k, v, &[("fast", PlanMode::Fast), ("full", PlanMode::Full)])?,

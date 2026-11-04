@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 mod assembler;
+mod batch_budget;
 mod error;
 mod format;
 #[cfg(feature = "object-store")]

@@ -55,11 +55,9 @@ fn options_are_validated() {
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn info_read_and_convert_on_the_corpus() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS not set: test skipped");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let r = registry();
     let f = r.by_name("sas7bdat").unwrap();
     let src = corpus

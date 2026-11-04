@@ -100,11 +100,9 @@ fn http_store(addr: std::net::SocketAddr) -> Arc<dyn ObjectStore> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn sql_equals_direct_reader_on_the_whole_corpus() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let (mut files, mut failures) = (0usize, Vec::new());
     for f in corpus.files().expect("corpus") {
         let open = open_options_for(&f.path);
@@ -168,11 +166,9 @@ async fn sql_equals_direct_reader_on_the_whole_corpus() {
 
 /// Critère 3 : 1, 4 et 8 partitions → mêmes lignes ; le plan annonce bien le parallélisme.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn partitions_give_the_same_rows() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     for name in [
         "taille/taille_n50000_no",
         "suppression/suppression_n100_del10_no",
@@ -209,11 +205,9 @@ async fn partitions_give_the_same_rows() {
 /// Critère 2 (fin) : `COUNT(*)` n'ouvre aucune page de données (HTTP : seulement `head` et le préfixe), et la
 /// colonne annexe `x__missing` se filtre en SQL.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn count_star_reads_no_data_pages_and_sidecar_filters_in_sql() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let requests = Arc::new(AtomicU64::new(0));
     let addr = http::serve(corpus.root().to_path_buf(), Arc::clone(&requests)).await;
     let store = http_store(addr);
@@ -263,11 +257,9 @@ async fn count_star_reads_no_data_pages_and_sidecar_filters_in_sql() {
 
 /// Critère 4 : lecture HTTP identique à la lecture locale, requêtes bornées.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn http_sql_matches_local() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let requests = Arc::new(AtomicU64::new(0));
     let addr = http::serve(corpus.root().to_path_buf(), Arc::clone(&requests)).await;
     let store = http_store(addr);

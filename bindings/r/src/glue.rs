@@ -54,7 +54,14 @@ fn sas7bdat_read_native(
     encoding: Robj,
     trim_ws: bool,
     strict: bool,
+    max_bytes: f64,
 ) -> Robj {
+    if !max_bytes.is_finite() || max_bytes < 1.0 || max_bytes > usize::MAX as f64 {
+        return failure(
+            "sas7bdat_usage_error",
+            "max_bytes doit être un entier positif fini".to_owned(),
+        );
+    }
     let opts = RReadOptions {
         col_select: col_select
             .as_str_vector()
@@ -63,6 +70,7 @@ fn sas7bdat_read_native(
         encoding: encoding.as_str().map(str::to_owned),
         trim_ws,
         strict,
+        max_bytes: max_bytes as usize,
     };
     let table = match read_table(Path::new(path), &opts) {
         Ok(t) => t,

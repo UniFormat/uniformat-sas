@@ -12,9 +12,10 @@ publish.workspace = true
 uniformat-sas = { workspace = true }
 uniformat-sas-io = { workspace = true }
 uniformat-sas-arrow = { workspace = true, features = ["object-store"] }
-# Doit rester aligné sur la version d'object_store et d'arrow de DataFusion 55 (object_store 0.13, arrow 59).
+# Arrow reste aligné sur DataFusion 55. Notre ObjectFile utilise object_store 0.14.2
+# (quick-xml corrigé) ; il ne passe pas par le registre object_store interne de DataFusion.
 datafusion = { version = "55", default-features = false }
-object_store = { version = "0.13", default-features = false, features = ["fs"] }
+object_store = { version = "0.14.2", default-features = false, features = ["fs"] }
 futures = "0.3"
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt"] }
@@ -22,7 +23,7 @@ tokio = { version = "1", features = ["rt"] }
 [dev-dependencies]
 uniformat-testkit = { workspace = true }
 datafusion = { version = "55", default-features = false, features = ["sql"] }
-object_store = { version = "0.13", features = ["fs", "http"] }
+object_store = { version = "0.14.2", features = ["fs", "http"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
 
 [lints]

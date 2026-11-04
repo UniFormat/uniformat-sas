@@ -151,6 +151,8 @@ pub struct BatchAssembler {
     opts: ReadOptions,
     policy: TextPolicy,
     rows_in_batch: usize,
+    max_rows: usize,
+    target_rows: usize,
     remaining: Option<u64>,
     stats: ReadStats,
     error: Option<Error>,
@@ -181,6 +183,21 @@ impl BatchAssembler {
         limit: Option<u64>,
         rows_before: u64,
     ) -> Result<Self> {
+        let count = projection.map_or_else(
+            || {
+                meta.columns
+                    .len()
+                    .saturating_add(if opts.missing == crate::MissingMode::Sidecar {
+                        meta.columns.iter().filter(|c| c.kind.is_numeric()).count()
+                    } else {
+                        0
+                    })
+            },
+            <[usize]>::len,
+        );
+        if count > opts.max_output_columns {
+            return Err(Error::ResourceLimit("trop de colonnes de sortie"));
+        }
         let plans = field_plans(&meta, opts);
         let chosen: Vec<FieldPlan> = match projection {
             None => plans,
@@ -189,6 +206,10 @@ impl BatchAssembler {
                 .map(|&i| plans.get(i).cloned().ok_or(Error::Projection(i)))
                 .collect::<Result<_>>()?,
         };
+        let max_rows = crate::batch_budget::max_rows(&meta, &chosen, opts)?;
+        // Leave room for a page: decoding is page-granular. A single oversized page still
+        // fails before appending beyond max_rows; it cannot bypass the memory budget.
+        let target_rows = opts.batch_rows.clamp(1, 1 << 20).min((max_rows / 2).max(1));
         let schema_fields: Vec<Field> = chosen.iter().map(|p| p.field.clone()).collect();
         let mut schema_meta = std::collections::HashMap::new();
         schema_meta.insert("sas.table_name".to_owned(), meta.header.table_name.clone());
@@ -197,12 +218,7 @@ impl BatchAssembler {
         // `batch_rows` valeurs par colonne.
         let rows_hint = usize::try_from(meta.row_count).unwrap_or(usize::MAX);
         let limit_hint = limit.map_or(usize::MAX, |l| usize::try_from(l).unwrap_or(usize::MAX));
-        let capacity = opts
-            .batch_rows
-            .min(1 << 20)
-            .min(rows_hint)
-            .min(limit_hint)
-            .max(1);
+        let capacity = target_rows.min(1024).min(rows_hint).min(limit_hint).max(1);
         let columns = chosen
             .iter()
             .map(|p| OutColumn {
@@ -224,6 +240,8 @@ impl BatchAssembler {
             opts: opts.clone(),
             policy,
             rows_in_batch: 0,
+            max_rows,
+            target_rows,
             remaining: limit,
             stats: ReadStats::default(),
             error: None,
@@ -263,7 +281,7 @@ impl BatchAssembler {
     /// Le lot en cours a atteint `batch_rows` lignes.
     #[must_use]
     pub fn is_full(&self) -> bool {
-        self.rows_in_batch >= self.opts.batch_rows.max(1)
+        self.rows_in_batch >= self.target_rows
     }
 
     /// Lignes en attente dans le lot en cours.
@@ -302,8 +320,15 @@ impl BatchAssembler {
         let (opts, policy) = (&self.opts, &self.policy);
         let (stats, error) = (&mut self.stats, &mut self.error);
         let (remaining, in_batch) = (&mut self.remaining, &mut self.rows_in_batch);
+        let max_rows = self.max_rows;
         let result = decoder.visit_rows(page_index, page, |row| {
             if error.is_some() || *remaining == Some(0) {
+                return;
+            }
+            if *in_batch >= max_rows {
+                *error = Some(Error::ResourceLimit(
+                    "une page dépasse le budget mémoire du lot",
+                ));
                 return;
             }
             for c in columns.iter_mut() {

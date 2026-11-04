@@ -30,11 +30,9 @@ fn assert_covers(
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn fast_plan_agrees_with_full_plan_on_the_corpus() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let (mut checked, mut mismatching) = (0usize, Vec::new());
     for f in corpus.files().expect("corpus") {
         let stem = f.stem();
@@ -98,11 +96,9 @@ fn fast_plan_agrees_with_full_plan_on_the_corpus() {
 /// Le plan complet d'un fichier à lignes supprimées ou à pages partielles reste exact, et le plan rapide est refusé
 /// proprement (erreur typée) s'il se trompe.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn fast_plan_rejects_a_wrong_hypothesis() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let path = corpus.root().join("files/taille/taille_n50000_no.sas7bdat");
     let file = SasFile::open(
         FileSource::open(&path).expect("source"),
@@ -117,11 +113,9 @@ fn fast_plan_rejects_a_wrong_hypothesis() {
 
 /// L'ouverture ne lit que l'en-tête et les pages de métadonnées : jamais une page de données.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn open_reads_only_header_and_metadata_pages() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let mut checked = 0usize;
     for f in corpus.files().expect("corpus") {
         let options = OpenOptions {

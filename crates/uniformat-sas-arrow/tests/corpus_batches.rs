@@ -167,11 +167,9 @@ fn check_batches(
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn batches_equal_direct_reader_on_the_whole_corpus() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let (mut files, mut cells) = (0usize, 0usize);
     let mut failures = Vec::new();
     for f in corpus.files().expect("corpus") {
@@ -212,11 +210,9 @@ fn batches_equal_direct_reader_on_the_whole_corpus() {
 
 /// Critère 1 : le schéma d'un fichier de 5 000 colonnes se lit avec l'en-tête et les pages de métadonnées seulement.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn schema_of_5000_columns_reads_only_metadata() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let path = corpus
         .root()
         .join("files/taille/taille_wide5000_no.sas7bdat");
@@ -249,11 +245,9 @@ fn schema_of_5000_columns_reads_only_metadata() {
 
 /// Critère 5 : `x__missing` redonne les 28 codes de `valeurs_manquants_no`.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn sidecar_gives_the_28_missing_codes() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let path = corpus
         .root()
         .join("files/valeurs/valeurs_manquants_no.sas7bdat");
@@ -299,11 +293,9 @@ fn sidecar_gives_the_28_missing_codes() {
 
 /// Projection (dans l'ordre demandé, colonnes annexes comprises) et `LIMIT`.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn projection_and_limit_are_pushed_down() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let path = corpus.root().join("files/taille/taille_n50000_no.sas7bdat");
     let file = Arc::new(
         SasFile::open(
@@ -351,11 +343,9 @@ fn projection_and_limit_are_pushed_down() {
 /// Les groupes de pages d'un plan (1, 4, 8 partitions) redonnent les lignes de la lecture séquentielle, dans l'ordre
 /// des groupes, pour le plan rapide comme pour le plan complet.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn page_groups_reproduce_sequential_read() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     for name in [
         "taille/taille_n50000_no",
         "suppression/suppression_n100_del10_no",

@@ -126,8 +126,13 @@ def read_sas_table(
     strict: bool = False,
     batch_rows: int = 8192,
     plan: str = "fast",
+    max_table_bytes: int = 256 * 1024 * 1024,
 ):
-    """Table Arrow (``pyarrow.Table``) ; émet les avertissements de lecture (``SasWarning``)."""
+    """Table Arrow ; limite les buffers retenus à ``max_table_bytes`` (256 Mio).
+
+    Dépassement : ``MemoryError``. Pour de grandes tables, utiliser :func:`read_sas`
+    en flux ou augmenter explicitement le budget pour une source fiable.
+    """
     native = _native.read_table(
         os.fspath(path),
         columns=None if columns is None else list(columns),
@@ -145,6 +150,7 @@ def read_sas_table(
         strict=strict,
         batch_rows=batch_rows,
         plan=plan,
+        max_table_bytes=max_table_bytes,
     )
     return _pa().table(native)
 

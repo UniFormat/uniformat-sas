@@ -21,11 +21,35 @@ struct Args {
     /// Jeton porteur exigé (sinon variable `UNIFORMAT_FLIGHT_TOKEN` ; sans jeton, pas d'authentification).
     #[arg(long, env = "UNIFORMAT_FLIGHT_TOKEN", hide_env_values = true)]
     token: Option<String>,
+    /// Authorize a non-loopback listener only behind an authenticated TLS reverse proxy on a private network.
+    #[arg(long)]
+    trusted_proxy: bool,
+}
+
+impl Args {
+    fn validate(&self) -> std::io::Result<()> {
+        if !self.addr.ip().is_loopback() && !self.trusted_proxy {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput,
+                "non-loopback Flight requires --trusted-proxy and an authenticated TLS proxy on a private network"));
+        }
+        if self
+            .token
+            .as_ref()
+            .is_some_and(|t| t.is_empty() || t.chars().any(char::is_control))
+        {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "empty or invalid bearer token",
+            ));
+        }
+        Ok(())
+    }
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    args.validate()?;
     let mut service = SasFlightService::new(&args.root)?;
     if let Some(n) = args.partitions {
         service = service.with_default_partitions(n);
@@ -62,4 +86,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_listener_requires_explicit_trusted_proxy_configuration() {
+        let args = Args::try_parse_from(["server", ".", "--addr", "0.0.0.0:50051"]).unwrap();
+        assert!(args.validate().is_err());
+        let args =
+            Args::try_parse_from(["server", ".", "--addr", "0.0.0.0:50051", "--trusted-proxy"])
+                .unwrap();
+        assert!(args.validate().is_ok());
+        let args = Args::try_parse_from(["server", "."]).unwrap();
+        assert!(args.validate().is_ok());
+    }
 }

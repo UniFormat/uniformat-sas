@@ -111,11 +111,9 @@ fn same_data(a: &RecordBatch, b: &RecordBatch) -> Result<(), String> {
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn corpus_roundtrip_plain_and_compressed() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let (mut checked, mut skipped_read, mut skipped_write) = (0usize, 0usize, Vec::new());
     let mut failures = Vec::new();
     for f in corpus.files().expect("corpus") {

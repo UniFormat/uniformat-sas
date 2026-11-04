@@ -43,6 +43,9 @@ pub enum Error {
     /// Indice de projection hors du schéma.
     #[error("projection : colonne {0} hors du schéma")]
     Projection(usize),
+    /// Une limite de ressources est dépassée avant l'allocation correspondante.
+    #[error("limite de ressources : {0}")]
+    ResourceLimit(&'static str),
     /// Fonction non prise en charge.
     #[error("non pris en charge : {0}")]
     Unsupported(&'static str),

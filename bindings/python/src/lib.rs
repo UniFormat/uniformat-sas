@@ -14,7 +14,7 @@ use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use pyo3::create_exception;
-use pyo3::exceptions::{PyException, PyOSError, PyValueError, PyWarning};
+use pyo3::exceptions::{PyException, PyMemoryError, PyOSError, PyValueError, PyWarning};
 use pyo3::prelude::*;
 use pyo3::sync::PyOnceLock;
 use pyo3::types::PyDict;
@@ -144,6 +144,7 @@ fn to_py(e: uniformat_sas_arrow::Error) -> PyErr {
         E::Io(IoError::Io(io)) => PyOSError::new_err(io.to_string()).with_io_kind(&io),
         E::Io(IoError::Format(f)) | E::Format(f) => core_error(f),
         E::Projection(_) => PyValueError::new_err(e.to_string()),
+        E::ResourceLimit(_) => PyMemoryError::new_err(e.to_string()),
         E::Unsupported(what) => sas_err(Kind::Unsupported, what),
         E::Write(WriteIoError::Io(io)) => PyOSError::new_err(io.to_string()).with_io_kind(&io),
         E::Write(w) => sas_err(Kind::Write, w.to_string()),
@@ -436,7 +437,7 @@ fn read_sas(
 #[pyo3(signature = (
     path, *, columns=None, limit=None, trailing_blanks="trim", missing="null", missing_suffix="__missing",
     dates="native", timestamp_unit="us", time="time", out_of_range="null", invalid_bytes="replace",
-    empty_as_null=false, encoding=None, strict=false, batch_rows=8192, plan="fast"
+    empty_as_null=false, encoding=None, strict=false, batch_rows=8192, plan="fast", max_table_bytes=268435456
 ))]
 #[allow(clippy::too_many_arguments)]
 fn read_table(
@@ -457,8 +458,12 @@ fn read_table(
     strict: bool,
     batch_rows: usize,
     plan: &str,
+    max_table_bytes: usize,
 ) -> PyResult<PyTable> {
-    let opts = PyOptions {
+    if max_table_bytes == 0 {
+        return Err(PyValueError::new_err("max_table_bytes doit être positif"));
+    }
+    let mut opts = PyOptions {
         trailing_blanks: trailing_blanks.to_owned(),
         missing: missing.to_owned(),
         missing_suffix: missing_suffix.to_owned(),
@@ -474,14 +479,21 @@ fn read_table(
         plan: plan.to_owned(),
     }
     .build()?;
+    opts.max_batch_bytes = opts.max_batch_bytes.min(max_table_bytes);
     let path = path.to_owned();
     let (open_report, schema, batches, stats, read_report) = py.detach(
         || -> PyResult<(ReadReport, _, Vec<RecordBatch>, ReadStats, Option<ReadReport>)> {
             let (file, mut reader) = make_reader(&path, columns, limit, &opts)?;
             let schema = reader.schema();
             let mut batches = Vec::new();
+            let mut retained_bytes = 0usize;
             for b in reader.by_ref() {
-                batches.push(b.map_err(to_py)?);
+                let batch = b.map_err(to_py)?;
+                retained_bytes = retained_bytes.checked_add(batch.get_array_memory_size())
+                    .filter(|n| *n <= max_table_bytes)
+                    .ok_or_else(|| PyMemoryError::new_err("max_table_bytes dépassé ; utiliser read_sas en flux, limit, ou augmenter le budget pour une source fiable"))?;
+                batches.try_reserve(1).map_err(|_| PyMemoryError::new_err("réservation de table impossible"))?;
+                batches.push(batch);
             }
             Ok((
                 file.report().clone(),

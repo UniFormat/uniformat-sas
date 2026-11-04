@@ -21,3 +21,9 @@ Une table compressée n'a qu'un endpoint. `list_flights` énumère les fichiers 
 
 Sécurité : les chemins sont confinés au dossier racine et les tickets revalidés ; le jeton porteur circule en clair (pas de
 TLS) : placer le service derrière un proxy TLS. Service **non publié** (décision NULL, ADR 0007).
+
+## Limites et déploiement
+
+Le service refuse les projections répétées et applique des budgets serveur : 4 requêtes simultanées, 1024 colonnes, 8 Mio par lot et 30 secondes par requête. Les payloads sont limités à 64 Kio et le listing est borné. Les limites peuvent être configurées avec `ServiceLimits` côté Rust, jamais via un ticket client.
+
+Une adresse hors loopback exige `--trusted-proxy`. Ce drapeau suppose un réseau privé et un frontal TLS authentifié qui limite aussi la durée des connexions/flux ; il n'active pas TLS dans le serveur. Préférer la variable `UNIFORMAT_FLIGHT_TOKEN` aux arguments de commande et conserver la racine des fichiers en lecture seule pour les utilisateurs non fiables. Voir [les garanties et limites détaillées](../../docs/security.md).

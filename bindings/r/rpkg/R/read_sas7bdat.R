@@ -10,7 +10,7 @@ sas7bdat_stop <- function(class, message, call = sys.call(-1)) {
   ))
 }
 
-sas7bdat_read_raw <- function(path, col_select, n_max, encoding, trim_ws, strict) {
+sas7bdat_read_raw <- function(path, col_select, n_max, encoding, trim_ws, strict, max_bytes = 256 * 1024^2) {
   if (!is.character(path) || length(path) != 1L || is.na(path)) {
     sas7bdat_stop("sas7bdat_usage_error", "`path` doit etre une chaine de caracteres")
   }
@@ -20,7 +20,7 @@ sas7bdat_read_raw <- function(path, col_select, n_max, encoding, trim_ws, strict
   }
   # une panique du coeur est rattrapee par extendr (condition R) : on la rend en `sas7bdat_internal_error`
   res <- tryCatch(
-    sas7bdat_read_native(path, col_select, as.double(n_max), encoding, isTRUE(trim_ws), isTRUE(strict)),
+    sas7bdat_read_native(path, col_select, as.double(n_max), encoding, isTRUE(trim_ws), isTRUE(strict), as.double(max_bytes)),
     error = function(e) sas7bdat_stop("sas7bdat_internal_error", conditionMessage(e))
   )
   if (!isTRUE(res$ok)) {
@@ -39,13 +39,14 @@ sas7bdat_read_raw <- function(path, col_select, n_max, encoding, trim_ws, strict
 #' @param n_max Nombre maximal de lignes (`Inf` : toutes).
 #' @param encoding Encodage impose (par exemple `"UTF-8"`), corrige un octet 70 non fiable.
 #' @param trim_ws Retire les blancs de fin des chaines.
+#' @param max_bytes Budget conservateur des colonnes de sortie en octets (256 Mio par defaut).
 #' @param strict Les cas non verifies par la specification sont des erreurs.
 #' @return Un `data.frame`. Attributs de colonne : `label`, `format.sas`, `informat.sas`. Les manquants speciaux
 #'   (`._`, `.A` a `.Z`) sont des NA etiquetes lisibles par `haven::na_tag()`. Attributs de table : `label`,
 #'   `sas7bdat.created`, `sas7bdat.encoding`, `sas7bdat.compression`.
 #' @export
-read_sas7bdat <- function(path, col_select = NULL, n_max = Inf, encoding = NULL, trim_ws = TRUE, strict = FALSE) {
-  res <- sas7bdat_read_raw(path, col_select, n_max, encoding, trim_ws, strict)
+read_sas7bdat <- function(path, col_select = NULL, n_max = Inf, encoding = NULL, trim_ws = TRUE, strict = FALSE, max_bytes = 256 * 1024^2) {
+  res <- sas7bdat_read_raw(path, col_select, n_max, encoding, trim_ws, strict, max_bytes)
   cols <- res$columns
   names(cols) <- res$names
   df <- structure(

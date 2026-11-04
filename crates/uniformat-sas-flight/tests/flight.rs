@@ -83,11 +83,9 @@ async fn collect(c: &mut FlightClient, t: Ticket) -> Vec<RecordBatch> {
 }
 
 #[tokio::test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn schema_without_data_and_parallel_endpoints_equal_the_direct_read() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let root = corpus.root().join("files");
     let (addr, stats) = serve(&root, None).await;
     let mut c = client(addr).await;
@@ -167,10 +165,9 @@ async fn schema_without_data_and_parallel_endpoints_equal_the_direct_read() {
 }
 
 #[tokio::test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn projection_limit_sidecar_and_schema_call() {
-    let Some(corpus) = Corpus::from_env() else {
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let root = corpus.root().join("files");
     let (addr, _) = serve(&root, None).await;
     let mut c = client(addr).await;
@@ -230,10 +227,9 @@ async fn projection_limit_sidecar_and_schema_call() {
 }
 
 #[tokio::test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn tickets_and_paths_are_validated_and_listing_works() {
-    let Some(corpus) = Corpus::from_env() else {
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let root = corpus.root().join("files");
     let (addr, _) = serve(&root, None).await;
     let mut c = client(addr).await;
@@ -310,10 +306,9 @@ async fn tickets_and_paths_are_validated_and_listing_works() {
 }
 
 #[tokio::test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn bearer_token_is_required_when_configured() {
-    let Some(corpus) = Corpus::from_env() else {
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let root = corpus.root().join("files");
     let (addr, _) = serve(&root, Some("secret")).await;
     let d = cmd("base/base_n100_mix_no.sas7bdat", 1, ReadSpec::default());

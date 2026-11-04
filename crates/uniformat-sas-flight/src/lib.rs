@@ -11,6 +11,12 @@
 //! (chemin confiné au dossier racine, plage dans le fichier, `rows_before` recalculé par le plan).
 #![forbid(unsafe_code)]
 
+mod resource;
+use resource::RequestBudget;
+pub use resource::ServiceLimits;
+use tokio::sync::Semaphore;
+use tokio::time::{timeout_at, Instant};
+
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -26,6 +32,7 @@ use arrow_flight::{
 use arrow_schema::SchemaRef;
 use futures::stream::BoxStream;
 use futures::{StreamExt, TryStreamExt};
+use prost::Message;
 use serde::{Deserialize, Serialize};
 use tonic::{Request, Response, Status, Streaming};
 use uniformat_sas::{Compression, Encoding};
@@ -34,8 +41,6 @@ use uniformat_sas_arrow::{
 };
 use uniformat_sas_io::{CountingSource, FileSource, PageGroup, PlanMode, SasFile};
 
-/// Nombre maximal de fichiers rendus par `ListFlights`.
-const MAX_LISTED: usize = 10_000;
 /// Nombre maximal de partitions demandées.
 const MAX_PARTITIONS: usize = 1_024;
 
@@ -112,6 +117,8 @@ pub struct SasFlightService {
     root: Arc<PathBuf>,
     stats: Arc<Stats>,
     default_partitions: usize,
+    limits: ServiceLimits,
+    slots: Arc<Semaphore>,
 }
 
 fn internal(e: impl std::fmt::Display) -> Status {
@@ -130,6 +137,7 @@ fn map_error(e: uniformat_sas_arrow::Error) -> Status {
             Status::not_found(io.to_string())
         }
         uniformat_sas_arrow::Error::Projection(_) => Status::invalid_argument(e.to_string()),
+        uniformat_sas_arrow::Error::ResourceLimit(_) => Status::resource_exhausted(e.to_string()),
         other => Status::data_loss(other.to_string()),
     }
 }
@@ -148,9 +156,42 @@ impl SasFlightService {
         }
         Ok(Self {
             root: Arc::new(root),
+            slots: Arc::new(Semaphore::new(ServiceLimits::default().concurrent_requests)),
+            limits: ServiceLimits::default(),
             stats: Arc::new(Stats::default()),
             default_partitions: std::thread::available_parallelism().map_or(4, usize::from),
         })
+    }
+
+    /// Set limits before sharing the service with clients.
+    ///
+    /// # Errors
+    /// Zero/invalid limits or a timeout above one hour.
+    pub fn with_limits(mut self, limits: ServiceLimits) -> std::io::Result<Self> {
+        limits.validate()?;
+        self.slots = Arc::new(Semaphore::new(limits.concurrent_requests));
+        self.limits = limits;
+        Ok(self)
+    }
+
+    fn budget(&self) -> Result<RequestBudget, Status> {
+        RequestBudget::acquire(&self.slots, self.limits.request_timeout)
+    }
+
+    fn check_payload(&self, len: usize) -> Result<(), Status> {
+        if len > self.limits.request_bytes {
+            return Err(Status::resource_exhausted("requête trop volumineuse"));
+        }
+        Ok(())
+    }
+
+    fn check_response(&self, len: usize) -> Result<(), Status> {
+        if len > self.limits.response_bytes {
+            return Err(Status::resource_exhausted(
+                "métadonnées de réponse trop volumineuses",
+            ));
+        }
+        Ok(())
     }
 
     /// Nombre d'endpoints par défaut quand le descripteur n'en demande pas.
@@ -192,8 +233,11 @@ impl SasFlightService {
     }
 
     #[allow(clippy::field_reassign_with_default)]
-    fn read_options(spec: &ReadSpec) -> Result<ReadOptions, Status> {
+    fn read_options(&self, spec: &ReadSpec) -> Result<ReadOptions, Status> {
         let mut o = ReadOptions::default();
+        o.max_batch_bytes = self.limits.batch_bytes;
+        o.max_output_columns = self.limits.output_columns;
+        o.group_bytes = 1024 * 1024;
         o.missing = match spec.missing.as_deref() {
             None | Some("null") => MissingMode::Null,
             Some("sidecar") => MissingMode::Sidecar,
@@ -232,16 +276,29 @@ impl SasFlightService {
         opts: &ReadOptions,
     ) -> Result<Arc<SasFile<CountingSource<FileSource>>>, Status> {
         let src = FileSource::open(path).map_err(|e| Status::not_found(e.to_string()))?;
-        let file = SasFile::open(CountingSource::new(src), opts.open_options())
-            .map_err(|e| map_error(e.into()))?;
+        let mut open = opts.open_options();
+        open.limits.max_columns = self.limits.output_columns.min(u32::MAX as usize) as u32;
+        open.limits.max_page_length = 1024 * 1024;
+        open.limits.max_row_length = 1024 * 1024;
+        open.limits.max_text_bytes = 4 * 1024 * 1024;
+        let file =
+            SasFile::open(CountingSource::new(src), open).map_err(|e| map_error(e.into()))?;
         Ok(Arc::new(file))
     }
 
     fn projection(
+        &self,
         schema: &SchemaRef,
         columns: Option<&Vec<String>>,
     ) -> Result<Option<Vec<usize>>, Status> {
+        if columns.map_or(schema.fields().len(), Vec::len) > self.limits.output_columns {
+            return Err(Status::resource_exhausted("trop de colonnes de sortie"));
+        }
         let Some(cols) = columns else { return Ok(None) };
+        let mut seen = std::collections::HashSet::with_capacity(cols.len());
+        if cols.iter().any(|c| !seen.insert(c)) {
+            return Err(invalid("les colonnes répétées ne sont pas autorisées"));
+        }
         cols.iter()
             .map(|c| {
                 schema
@@ -252,8 +309,16 @@ impl SasFlightService {
             .map(Some)
     }
 
-    fn descriptor_command(d: &FlightDescriptor) -> Result<Command, Status> {
+    fn descriptor_command(&self, d: &FlightDescriptor) -> Result<Command, Status> {
         use arrow_flight::flight_descriptor::DescriptorType;
+        let path_bytes = d
+            .path
+            .iter()
+            .try_fold(0usize, |total, p| {
+                total.checked_add(p.len().saturating_add(8))
+            })
+            .ok_or_else(|| Status::resource_exhausted("chemin trop volumineux"))?;
+        self.check_payload(d.cmd.len().saturating_add(path_bytes))?;
         match DescriptorType::try_from(d.r#type) {
             Ok(DescriptorType::Path) => {
                 let path = d
@@ -275,11 +340,11 @@ impl SasFlightService {
     /// Schéma, nombre de lignes et endpoints d'un fichier, sans lire de page de données.
     fn info(&self, cmd: &Command, descriptor: FlightDescriptor) -> Result<FlightInfo, Status> {
         let path = self.resolve(&cmd.path)?;
-        let opts = Self::read_options(&cmd.spec)?;
+        let opts = self.read_options(&cmd.spec)?;
         let file = self.open(&path, &opts)?;
         let meta = file.meta();
         let schema = arrow_schema(meta, &opts);
-        let projection = Self::projection(&schema, cmd.spec.columns.as_ref())?;
+        let projection = self.projection(&schema, cmd.spec.columns.as_ref())?;
         let out_schema: SchemaRef = match &projection {
             Some(p) => Arc::new(schema.project(p).map_err(internal)?),
             None => Arc::clone(&schema),
@@ -307,6 +372,7 @@ impl SasFlightService {
             .with_total_bytes(i64::try_from(bytes).unwrap_or(-1))
             // exact seulement sans ligne supprimée (ADR 0004)
             .with_ordered(true);
+        self.check_response(info.encoded_len())?;
         for g in &groups {
             let body = TicketBody {
                 path: cmd.path.clone(),
@@ -315,6 +381,7 @@ impl SasFlightService {
             };
             let ticket = serde_json::to_vec(&body).map_err(internal)?;
             info = info.with_endpoint(FlightEndpoint::new().with_ticket(Ticket::new(ticket)));
+            self.check_response(info.encoded_len())?;
         }
         self.stats
             .info_bytes
@@ -327,7 +394,11 @@ impl SasFlightService {
 type Stream<T> = BoxStream<'static, Result<T, Status>>;
 
 fn bearer_ok(token: &str, req_token: Option<&str>) -> bool {
-    req_token.is_some_and(|h| h.strip_prefix("Bearer ").is_some_and(|t| t == token))
+    req_token.is_some_and(|h| {
+        h.strip_prefix("Bearer ").is_some_and(|t| {
+            !token.is_empty() && constant_time_eq::constant_time_eq(t.as_bytes(), token.as_bytes())
+        })
+    })
 }
 
 /// Intercepteur d'authentification : jeton porteur (`authorization: Bearer <jeton>`).
@@ -369,64 +440,101 @@ impl FlightService for SasFlightService {
         &self,
         request: Request<Criteria>,
     ) -> Result<Response<Self::ListFlightsStream>, Status> {
+        let budget = self.budget()?;
+        self.check_payload(request.get_ref().expression.len())?;
         let filter = String::from_utf8_lossy(&request.get_ref().expression).into_owned();
         let svc = self.clone();
-        let infos = tokio::task::spawn_blocking(move || {
-            let mut out = Vec::new();
-            let mut stack = vec![(*svc.root).clone()];
-            while let Some(dir) = stack.pop() {
-                let Ok(rd) = std::fs::read_dir(&dir) else {
-                    continue;
-                };
-                let mut entries: Vec<_> = rd.flatten().collect();
-                entries.sort_by_key(std::fs::DirEntry::file_name);
-                for e in entries {
-                    let p = e.path();
-                    if p.is_dir() && !e.file_type().is_ok_and(|t| t.is_symlink()) {
-                        stack.push(p);
-                    } else if p.extension().and_then(|x| x.to_str()) == Some("sas7bdat") {
-                        let Ok(rel) = p.strip_prefix(svc.root.as_path()) else {
+        let deadline = budget.deadline;
+        let infos = budget
+            .blocking(move || {
+                let mut out = Vec::new();
+                let mut response_bytes = 0usize;
+                let mut stack = vec![(*svc.root).clone()];
+                let mut visited = 0usize;
+                while let Some(dir) = stack.pop() {
+                    let Ok(rd) = std::fs::read_dir(&dir) else {
+                        continue;
+                    };
+                    for entry in rd {
+                        visited += 1;
+                        if visited > svc.limits.listing_entries {
+                            return Err(Status::resource_exhausted("listing trop volumineux"));
+                        }
+                        if Instant::now() >= deadline {
+                            return Err(Status::deadline_exceeded("listing trop long"));
+                        }
+                        let Ok(e) = entry else {
                             continue;
                         };
-                        let rel = rel.to_string_lossy().into_owned();
-                        if !filter.is_empty() && !rel.contains(&filter) {
+                        let Ok(kind) = e.file_type() else {
+                            continue;
+                        };
+                        if kind.is_symlink() {
                             continue;
                         }
-                        let cmd = Command {
-                            path: rel.clone(),
-                            ..Command::default()
-                        };
-                        // fichier illisible : ignoré dans le listing
-                        if let Ok(mut info) = svc.info(&cmd, FlightDescriptor::new_path(vec![rel]))
+                        let p = e.path();
+                        if kind.is_dir() {
+                            stack.push(p);
+                        } else if kind.is_file()
+                            && p.extension().and_then(|x| x.to_str()) == Some("sas7bdat")
                         {
+                            let Ok(rel) = p.strip_prefix(svc.root.as_path()) else {
+                                continue;
+                            };
+                            let rel = rel.to_string_lossy().into_owned();
+                            if !filter.is_empty() && !rel.contains(&filter) {
+                                continue;
+                            }
+                            let cmd = Command {
+                                path: rel.clone(),
+                                ..Command::default()
+                            };
+                            let mut info =
+                                match svc.info(&cmd, FlightDescriptor::new_path(vec![rel])) {
+                                    Ok(info) => info,
+                                    Err(e)
+                                        if matches!(
+                                            e.code(),
+                                            tonic::Code::ResourceExhausted
+                                                | tonic::Code::DeadlineExceeded
+                                        ) =>
+                                    {
+                                        return Err(e)
+                                    }
+                                    Err(_) => continue,
+                                };
+                            if out.len() >= svc.limits.listing_files {
+                                return Err(Status::resource_exhausted(
+                                    "trop de fichiers dans le listing",
+                                ));
+                            }
                             info.endpoint.clear();
+                            response_bytes =
+                                response_bytes.checked_add(info.encoded_len()).ok_or_else(
+                                    || Status::resource_exhausted("listing trop volumineux"),
+                                )?;
+                            svc.check_response(response_bytes)?;
                             out.push(info);
-                        }
-                        if out.len() >= MAX_LISTED {
-                            return out;
                         }
                     }
                 }
-            }
-            out
-        })
-        .await
-        .map_err(internal)?;
-        Ok(Response::new(
+                Ok(out)
+            })
+            .await?;
+        Ok(Response::new(budget.stream(
             futures::stream::iter(infos.into_iter().map(Ok)).boxed(),
-        ))
+        )))
     }
 
     async fn get_flight_info(
         &self,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<FlightInfo>, Status> {
+        let budget = self.budget()?;
         let descriptor = request.into_inner();
-        let cmd = Self::descriptor_command(&descriptor)?;
+        let cmd = self.descriptor_command(&descriptor)?;
         let svc = self.clone();
-        let info = tokio::task::spawn_blocking(move || svc.info(&cmd, descriptor))
-            .await
-            .map_err(internal)??;
+        let info = budget.blocking(move || svc.info(&cmd, descriptor)).await?;
         Ok(Response::new(info))
     }
 
@@ -441,28 +549,30 @@ impl FlightService for SasFlightService {
         &self,
         request: Request<FlightDescriptor>,
     ) -> Result<Response<SchemaResult>, Status> {
+        let budget = self.budget()?;
         let descriptor = request.into_inner();
-        let cmd = Self::descriptor_command(&descriptor)?;
+        let cmd = self.descriptor_command(&descriptor)?;
         let svc = self.clone();
-        let schema = tokio::task::spawn_blocking(move || -> Result<SchemaRef, Status> {
-            let path = svc.resolve(&cmd.path)?;
-            let opts = Self::read_options(&cmd.spec)?;
-            let file = svc.open(&path, &opts)?;
-            let schema = arrow_schema(file.meta(), &opts);
-            svc.stats
-                .info_bytes
-                .fetch_add(file.source().bytes_read(), Ordering::Relaxed);
-            match Self::projection(&schema, cmd.spec.columns.as_ref())? {
-                Some(p) => Ok(Arc::new(schema.project(&p).map_err(internal)?)),
-                None => Ok(schema),
-            }
-        })
-        .await
-        .map_err(internal)??;
+        let schema = budget
+            .blocking(move || -> Result<SchemaRef, Status> {
+                let path = svc.resolve(&cmd.path)?;
+                let opts = svc.read_options(&cmd.spec)?;
+                let file = svc.open(&path, &opts)?;
+                let schema = arrow_schema(file.meta(), &opts);
+                svc.stats
+                    .info_bytes
+                    .fetch_add(file.source().bytes_read(), Ordering::Relaxed);
+                match svc.projection(&schema, cmd.spec.columns.as_ref())? {
+                    Some(p) => Ok(Arc::new(schema.project(&p).map_err(internal)?)),
+                    None => Ok(schema),
+                }
+            })
+            .await?;
         // même encodage IPC que le schéma d'un `FlightInfo`
         let encoded = FlightInfo::new()
             .try_with_schema(&schema)
             .map_err(internal)?;
+        self.check_response(encoded.encoded_len())?;
         Ok(Response::new(SchemaResult {
             schema: encoded.schema,
         }))
@@ -472,57 +582,66 @@ impl FlightService for SasFlightService {
         &self,
         request: Request<Ticket>,
     ) -> Result<Response<Self::DoGetStream>, Status> {
+        let budget = self.budget()?;
+        self.check_payload(request.get_ref().ticket.len())?;
         let body: TicketBody = serde_json::from_slice(&request.get_ref().ticket)
             .map_err(|e| invalid(format!("ticket invalide : {e}")))?;
         let svc = self.clone();
-        let (tx, rx) = tokio::sync::mpsc::channel::<Result<RecordBatch, FlightError>>(4);
+        let (tx, rx) = tokio::sync::mpsc::channel::<Result<RecordBatch, FlightError>>(1);
         // ouverture et validation avant le premier lot : une erreur de ticket est une erreur d'appel
-        let (file, reader) = tokio::task::spawn_blocking(move || -> Result<_, Status> {
-            let path = svc.resolve(&body.path)?;
-            let opts = Self::read_options(&body.spec)?;
-            let file = svc.open(&path, &opts)?;
-            let schema = arrow_schema(file.meta(), &opts);
-            let projection = Self::projection(&schema, body.spec.columns.as_ref())?;
-            let page_count = file.meta().header.page_count;
-            let (start, end) = body.pages;
-            if start > end || end > page_count {
-                return Err(invalid("plage de pages hors du fichier"));
-            }
-            let plan = Arc::new(file.page_plan(opts.plan).map_err(|e| map_error(e.into()))?);
-            // rows_before et nombre de lignes viennent du plan, jamais du client
-            let compressed = file.meta().compression != Compression::None;
-            if compressed && (start, end) != (0, page_count) {
-                return Err(invalid("table compressée : lecture complète seulement"));
-            }
-            let rows_before = plan.rows_before(start).unwrap_or(0);
-            let group = PageGroup {
-                pages: start..end,
-                rows_before,
-                rows: plan
-                    .rows_before(end)
-                    .map_or(0, |e| e.saturating_sub(rows_before)),
-            };
-            let reader = BatchReader::with_group(
-                Arc::clone(&file),
-                &group,
-                plan,
-                projection,
-                body.spec.limit,
-                opts,
-            )
-            .map_err(map_error)?;
-            Ok((file, reader))
-        })
-        .await
-        .map_err(internal)??;
+        let (file, mut reader) = budget
+            .blocking(move || -> Result<_, Status> {
+                let path = svc.resolve(&body.path)?;
+                let opts = svc.read_options(&body.spec)?;
+                let file = svc.open(&path, &opts)?;
+                let schema = arrow_schema(file.meta(), &opts);
+                let projection = svc.projection(&schema, body.spec.columns.as_ref())?;
+                let page_count = file.meta().header.page_count;
+                let (start, end) = body.pages;
+                if start > end || end > page_count {
+                    return Err(invalid("plage de pages hors du fichier"));
+                }
+                let plan = Arc::new(file.page_plan(opts.plan).map_err(|e| map_error(e.into()))?);
+                // rows_before et nombre de lignes viennent du plan, jamais du client
+                let compressed = file.meta().compression != Compression::None;
+                if compressed && (start, end) != (0, page_count) {
+                    return Err(invalid("table compressée : lecture complète seulement"));
+                }
+                let rows_before = plan.rows_before(start).unwrap_or(0);
+                let group = PageGroup {
+                    pages: start..end,
+                    rows_before,
+                    rows: plan
+                        .rows_before(end)
+                        .map_or(0, |e| e.saturating_sub(rows_before)),
+                };
+                let reader = BatchReader::with_group(
+                    Arc::clone(&file),
+                    &group,
+                    plan,
+                    projection,
+                    body.spec.limit,
+                    opts,
+                )
+                .map_err(map_error)?;
+                Ok((file, reader))
+            })
+            .await?;
         let schema = reader.schema();
         let stats = Arc::clone(&self.stats);
         stats.get_calls.fetch_add(1, Ordering::Relaxed);
+        let producer_budget = budget.clone();
+        let runtime = tokio::runtime::Handle::current();
         tokio::task::spawn_blocking(move || {
-            for batch in reader {
+            let _permit = &producer_budget;
+            while !tx.is_closed() && Instant::now() < producer_budget.deadline {
+                let Some(batch) = reader.next() else {
+                    break;
+                };
                 let item = batch.map_err(|e| FlightError::ExternalError(Box::new(e)));
                 let failed = item.is_err();
-                if tx.blocking_send(item).is_err() || failed {
+                let sent = runtime.block_on(timeout_at(producer_budget.deadline, tx.send(item)));
+                if !matches!(sent, Ok(Ok(()))) || failed {
                     break;
                 }
             }
@@ -534,9 +653,16 @@ impl FlightService for SasFlightService {
         let flight = FlightDataEncoderBuilder::new()
             .with_schema(schema)
             .build(batches)
-            .map_err(|e| Status::data_loss(e.to_string()))
+            .map_err(|e| {
+                if matches!(&e, FlightError::ExternalError(inner)
+                    if matches!(inner.downcast_ref::<uniformat_sas_arrow::Error>(), Some(uniformat_sas_arrow::Error::ResourceLimit(_)))) {
+                    Status::resource_exhausted(e.to_string())
+                } else {
+                    Status::data_loss(e.to_string())
+                }
+            })
             .boxed();
-        Ok(Response::new(flight))
+        Ok(Response::new(budget.stream(flight)))
     }
 
     async fn do_put(

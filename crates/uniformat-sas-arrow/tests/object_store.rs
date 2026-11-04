@@ -50,11 +50,9 @@ fn sync_batches(path: &FsPath, ro: &ReadOptions) -> Vec<RecordBatch> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn local_object_store_matches_sync_reader() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let store: Arc<dyn ObjectStore> =
         Arc::new(LocalFileSystem::new_with_prefix(corpus.root()).expect("magasin"));
     for name in [
@@ -131,11 +129,9 @@ async fn local_object_store_matches_sync_reader() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 async fn http_range_requests_are_bounded() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let requests = Arc::new(AtomicU64::new(0));
     let addr = http::serve(corpus.root().to_path_buf(), Arc::clone(&requests)).await;
     let store: Arc<dyn ObjectStore> = Arc::new(

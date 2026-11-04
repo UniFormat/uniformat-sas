@@ -14,11 +14,9 @@ fn expected_path() -> PathBuf {
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn no_unexpected_warnings() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let files = corpus.files().expect("lecture du corpus");
     let mut actual: BTreeMap<String, String> = BTreeMap::new();
     for f in &files {

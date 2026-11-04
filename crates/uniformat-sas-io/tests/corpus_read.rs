@@ -104,11 +104,9 @@ fn compare(
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn all_tables_with_reference_csv_match() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let files = corpus.files().expect("lecture du corpus");
     let (mut read, mut compressed, mut no_csv, mut non_utf8_files) =
         (0usize, 0usize, 0usize, 0usize);
@@ -161,11 +159,9 @@ fn all_tables_with_reference_csv_match() {
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn deleted_rows_are_invisible() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let path = corpus
         .root()
         .join("files/suppression/suppression_n100_del10_no.sas7bdat");
@@ -184,11 +180,9 @@ fn deleted_rows_are_invisible() {
 
 /// Les fichiers sans CSV (publics compressés notamment) se lisent sans erreur et rendent `row_count - deleted` lignes.
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn every_file_reads_and_row_counts_match() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let files = corpus.files().expect("lecture du corpus");
     let mut failures = Vec::new();
     let (mut compressed, mut rows_total) = (0usize, 0u64);

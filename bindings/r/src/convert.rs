@@ -7,6 +7,7 @@
 //! - attributs de colonne : `label`, `format.sas`, `informat.sas`, `width` ; attributs de table : `label`,
 //!   `sas7bdat.created`, `sas7bdat.encoding`, `sas7bdat.compression`.
 
+use crate::read_budget::ReadBudget;
 use std::borrow::Cow;
 use std::path::Path;
 
@@ -113,6 +114,8 @@ pub struct RReadOptions {
     pub trim_ws: bool,
     /// Les cas non vérifiés par la spécification sont des erreurs.
     pub strict: bool,
+    /// Budget conservateur des colonnes de sortie, en octets (hors interpréteur R).
+    pub max_bytes: usize,
 }
 
 impl Default for RReadOptions {
@@ -123,6 +126,7 @@ impl Default for RReadOptions {
             encoding: None,
             trim_ws: true,
             strict: false,
+            max_bytes: 256 * 1024 * 1024,
         }
     }
 }
@@ -136,12 +140,16 @@ pub enum RError {
     Format(String),
     /// Option invalide.
     Usage(String),
+    /// Limite mémoire dépassée ou réservation impossible.
+    ResourceLimit(String),
 }
 
 impl std::fmt::Display for RError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Io(m) | Self::Format(m) | Self::Usage(m) => f.write_str(m),
+            Self::Io(m) | Self::Format(m) | Self::Usage(m) | Self::ResourceLimit(m) => {
+                f.write_str(m)
+            }
         }
     }
 }
@@ -156,6 +164,7 @@ impl RError {
             Self::Io(_) => "sas7bdat_io_error",
             Self::Format(_) => "sas7bdat_format_error",
             Self::Usage(_) => "sas7bdat_usage_error",
+            Self::ResourceLimit(_) => "sas7bdat_resource_error",
         }
     }
 }
@@ -284,13 +293,13 @@ pub fn read_table(path: &Path, opts: &RReadOptions) -> Result<RTable, RError> {
                 out
             }
         };
-    let capacity = usize::try_from(meta.visible_rows()).unwrap_or(0);
-    let capacity = opts.n_max.map_or(capacity, |n| n.min(capacity));
+    let budget = ReadBudget::new(&selected, meta.visible_rows(), opts)?;
+    // Never allocate from an untrusted declared row count. Grow only as rows are decoded.
     let mut data: Vec<RData> = selected
         .iter()
         .map(|c| match c.kind {
-            ColumnKind::Numeric { .. } => RData::Real(Vec::with_capacity(capacity)),
-            ColumnKind::Char { .. } => RData::Str(Vec::with_capacity(capacity)),
+            ColumnKind::Numeric { .. } => RData::Real(Vec::new()),
+            ColumnKind::Char { .. } => RData::Str(Vec::new()),
         })
         .collect();
     let classes: Vec<RClass> = selected.iter().map(|c| class_of(c)).collect();
@@ -302,7 +311,7 @@ pub fn read_table(path: &Path, opts: &RReadOptions) -> Result<RTable, RError> {
     let mut rows = 0usize;
     let mut replaced = 0u64;
     let mut nul_cut = 0u64;
-    let mut failure: Option<uniformat_sas::Error> = None;
+    let mut failure: Option<RError> = None;
     let mut decoder = file.decoder();
     let page_count = meta.header.page_count;
     'pages: for k in 0..page_count {
@@ -315,6 +324,10 @@ pub fn read_table(path: &Path, opts: &RReadOptions) -> Result<RTable, RError> {
         decoder
             .visit_rows(k, &bytes, |row| {
                 if rows >= limit || failure.is_some() {
+                    return;
+                }
+                if let Err(e) = budget.reserve_row(rows, &mut data) {
+                    failure = Some(e);
                     return;
                 }
                 for (j, col) in selected.iter().enumerate() {
@@ -336,7 +349,7 @@ pub fn read_table(path: &Path, opts: &RReadOptions) -> Result<RTable, RError> {
                                 v.push(Some(text));
                             }
                             Err(e) => {
-                                failure = Some(e);
+                                failure = Some(RError::Format(e.to_string()));
                                 return;
                             }
                         },
@@ -351,7 +364,7 @@ pub fn read_table(path: &Path, opts: &RReadOptions) -> Result<RTable, RError> {
         }
     }
     if let Some(e) = failure {
-        return Err(RError::Format(e.to_string()));
+        return Err(e);
     }
     let mut warnings: Vec<String> = file
         .report()

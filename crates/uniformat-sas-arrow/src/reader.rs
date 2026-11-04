@@ -25,6 +25,7 @@ pub struct BatchReader<S: ByteSource> {
     buf_pos: usize,
     page_len: usize,
     finished: bool,
+    failed: bool,
 }
 
 impl<S: ByteSource> std::fmt::Debug for BatchReader<S> {
@@ -136,6 +137,7 @@ impl<S: ByteSource> BatchReader<S> {
             buf_pos: 0,
             page_len,
             finished: false,
+            failed: false,
         })
     }
 
@@ -205,10 +207,14 @@ impl<S: ByteSource> Iterator for BatchReader<S> {
     type Item = Result<RecordBatch>;
 
     fn next(&mut self) -> Option<Self::Item> {
+        if self.failed {
+            return None;
+        }
         match self.advance() {
             Ok(Some(b)) => Some(Ok(b)),
             Ok(None) => None,
             Err(e) => {
+                self.failed = true;
                 self.finished = true;
                 self.buf = Vec::new();
                 self.buf_pos = 0;

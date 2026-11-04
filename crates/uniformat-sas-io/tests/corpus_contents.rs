@@ -156,11 +156,9 @@ fn check(path: &std::path::Path, contents: &std::path::Path) -> Result<Vec<Strin
 }
 
 #[test]
+#[ignore = "external SAS corpus: set UNIFORMAT_CORPUS and run with --ignored"]
 fn metadata_matches_proc_contents() {
-    let Some(corpus) = Corpus::from_env() else {
-        eprintln!("UNIFORMAT_CORPUS absent : test sauté");
-        return;
-    };
+    let corpus = Corpus::require_from_env();
     let files = corpus.files().expect("lecture du corpus");
     let (mut total, mut bad) = (0usize, Vec::new());
     for f in files.iter().filter(|f| f.contents.is_some()) {

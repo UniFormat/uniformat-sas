@@ -89,7 +89,8 @@ impl SasTableProvider {
             .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| DataFusionError::Plan("nom de fichier non UTF-8".to_owned()))?;
-        let store = LocalFileSystem::new_with_prefix(parent)?;
+        let store = LocalFileSystem::new_with_prefix(parent)
+            .map_err(|e| DataFusionError::External(Box::new(e)))?;
         Self::try_new(Arc::new(store), Path::from(name), opts).await
     }
 
