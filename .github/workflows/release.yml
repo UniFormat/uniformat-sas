@@ -1,0 +1,31 @@
+name: release
+# Builds wheels and the Flight server for a tag. It does NOT publish to crates.io, PyPI or CRAN.
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  wheels:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: uniformat-sas
+      - name: Sibling checkout
+        env:
+          GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
+        run: |
+          for r in uniformat-core uniformat-conformance; do
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/UniFormat/${r}.git" "$r"
+          done
+      - uses: PyO3/maturin-action@v1
+        with:
+          working-directory: uniformat-sas/bindings/python
+          args: --release --out dist
+          manylinux: auto
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: uniformat-sas/bindings/python/dist/*.whl

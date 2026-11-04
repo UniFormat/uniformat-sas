@@ -1,0 +1,41 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  rust:
+    uses: UniFormat/.github/.github/workflows/rust-ci.yml@main
+    with:
+      repo: uniformat-sas
+      siblings: uniformat-core uniformat-conformance
+      extra-args: --exclude uniformat-sas-py
+    secrets: inherit
+  python:
+    uses: UniFormat/.github/.github/workflows/python-ci.yml@main
+    with:
+      repo: uniformat-sas
+      project-dir: bindings/python
+      siblings: uniformat-core uniformat-conformance
+      native: true
+    secrets: inherit
+  r:
+    uses: UniFormat/.github/.github/workflows/r-ci.yml@main
+    with:
+      repo: uniformat-sas
+      package-dir: bindings/r/rpkg
+      siblings: uniformat-core uniformat-conformance
+    secrets: inherit
+  core-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: uniformat-sas
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Sibling checkout
+        env:
+          GH_TOKEN: ${{ secrets.CI_TOKEN || github.token }}
+        run: |
+          for r in uniformat-core uniformat-conformance; do
+            git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/UniFormat/${r}.git" "$r"
+          done
+      - run: ./ci/check_core_deps.sh && python3 -I ci/gen_tables.py --check
+        working-directory: uniformat-sas
