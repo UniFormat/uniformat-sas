@@ -1,0 +1,20 @@
+[package]
+name = "uniformat-sas-io"
+description = "Abstraction ByteSource (tranches, fichier, plages) au-dessus du cœur sas7bdat"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+uniformat-sas = { workspace = true }
+uniformat-core = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+uniformat-testkit = { workspace = true }
+
+[lints]
+workspace = true
