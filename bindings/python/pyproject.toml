@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "uniformat-sas"
+description = "Read and write SAS .sas7bdat files (Rust driver): Arrow streams, pandas, polars"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+license-files = ["LICENSE-MIT", "LICENSE-APACHE"]
+dynamic = ["version"]
+dependencies = ["pyarrow>=15", "uniformat-core>=0.1,<0.2"]
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Private :: Do Not Upload",
+]
+
+[project.entry-points."uniformat_io.formats"]
+sas = "uniformat_io.sas:FORMAT"
+
+[project.optional-dependencies]
+pandas = ["pandas>=2", "pyarrow>=15"]
+polars = ["polars>=1"]
+test = ["pytest", "pandas>=2", "polars>=1"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "uniformat_io.sas._native"
+features = ["pyo3/extension-module"]
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]
