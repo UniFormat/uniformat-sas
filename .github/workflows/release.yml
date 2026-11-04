@@ -20,14 +20,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: UniFormat/uniformat-core
-          ref: 5afd0cf15c22c82ef0cf1bf0fecdb54cd0e2abd9
+          ref: 4075555dcf669e3c598c871ce280dda5ffc92234
           path: uniformat-core
           token: ${{ secrets.CI_TOKEN || github.token }}
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: UniFormat/uniformat-conformance
-          ref: f060db8122e642e9fb2950d3bdbf4e6a8a19da07
+          ref: b75d53f3c0523b20500200083637f74aa1a702b9
           path: uniformat-conformance
           token: ${{ secrets.CI_TOKEN || github.token }}
           persist-credentials: false

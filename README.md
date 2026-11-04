@@ -56,8 +56,8 @@ files of `uniformat-conformance/data` can be used instead.
 
 ## Status and licensing
 
-0.1, **not published**. License `MIT OR Apache-2.0`, provisional. `docs/spec` and `tests/data` derive from analysis of
-files and a licensed runtime; keep this repository private until the licensing review is complete.
+0.1, **packages not yet published to registries**. Source repositories are public. License `MIT OR Apache-2.0`, provisional.
+`docs/spec` and `tests/data` document format analysis and provenance; consult those notes when redistributing reference material.
 
 ## Sécurité
 
