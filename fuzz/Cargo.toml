@@ -1,0 +1,44 @@
+[package]
+name = "uniformat-sas-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+uniformat-sas = { path = "../crates/uniformat-sas" }
+uniformat-sas-io = { path = "../crates/uniformat-sas-io" }
+
+# Hors du workspace : nécessite la toolchain nightly (cargo +nightly fuzz run <cible>).
+[workspace]
+
+[profile.release]
+debug = true
+overflow-checks = true
+
+[[bin]]
+name = "fuzz_header"
+path = "fuzz_targets/fuzz_header.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_pages"
+path = "fuzz_targets/fuzz_pages.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_rle"
+path = "fuzz_targets/fuzz_rle.rs"
+test = false
+doc = false
+
+[[bin]]
+name = "fuzz_rdc"
+path = "fuzz_targets/fuzz_rdc.rs"
+test = false
+doc = false

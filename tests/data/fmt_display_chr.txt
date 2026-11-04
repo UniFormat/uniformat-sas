@@ -1,0 +1,109 @@
+debut
+$char4.||                                                                                
+$char4.| ab| ab                                                                             
+$char4.|ab |ab                                                                              
+$char4.|abcdef|abcd                                                                            
+$char4.|a b|a b                                                                             
+$char4.|abcdefghij|abcd                                                                            
+$char4.|x|x                                                                               
+$char4.|  ab  |  ab                                                                            
+$char4.|ABC def|ABC                                                                             
+$char8.||                                                                                
+$char8.| ab| ab                                                                             
+$char8.|ab |ab                                                                              
+$char8.|abcdef|abcdef                                                                          
+$char8.|a b|a b                                                                             
+$char8.|abcdefghij|abcdefgh                                                                        
+$char8.|x|x                                                                               
+$char8.|  ab  |  ab                                                                            
+$char8.|ABC def|ABC def                                                                         
+$char12.||                                                                                
+$char12.| ab| ab                                                                             
+$char12.|ab |ab                                                                              
+$char12.|abcdef|abcdef                                                                          
+$char12.|a b|a b                                                                             
+$char12.|abcdefghij|abcdefghij                                                                      
+$char12.|x|x                                                                               
+$char12.|  ab  |  ab                                                                            
+$char12.|ABC def|ABC def                                                                         
+$4.||                                                                                
+$4.| ab| ab                                                                             
+$4.|ab |ab                                                                              
+$4.|abcdef|abcd                                                                            
+$4.|a b|a b                                                                             
+$4.|abcdefghij|abcd                                                                            
+$4.|x|x                                                                               
+$4.|  ab  |  ab                                                                            
+$4.|ABC def|ABC                                                                             
+$8.||                                                                                
+$8.| ab| ab                                                                             
+$8.|ab |ab                                                                              
+$8.|abcdef|abcdef                                                                          
+$8.|a b|a b                                                                             
+$8.|abcdefghij|abcdefgh                                                                        
+$8.|x|x                                                                               
+$8.|  ab  |  ab                                                                            
+$8.|ABC def|ABC def                                                                         
+$hex6.||                                                                                
+$hex6.| ab| ab                                                                             
+$hex6.|ab |ab                                                                              
+$hex6.|abcdef|abcdef                                                                          
+$hex6.|a b|a b                                                                             
+$hex6.|abcdefghij|abcdef                                                                          
+$hex6.|x|x                                                                               
+$hex6.|  ab  |  ab                                                                            
+$hex6.|ABC def|ABC de                                                                          
+$hex12.||                                                                                
+$hex12.| ab| ab                                                                             
+$hex12.|ab |ab                                                                              
+$hex12.|abcdef|abcdef                                                                          
+$hex12.|a b|a b                                                                             
+$hex12.|abcdefghij|abcdefghij                                                                      
+$hex12.|x|x                                                                               
+$hex12.|  ab  |  ab                                                                            
+$hex12.|ABC def|ABC def                                                                         
+$quote8.||""                                                                              
+$quote8.| ab|" ab"                                                                           
+$quote8.|ab |"ab"                                                                            
+$quote8.|abcdef|"abcdef"                                                                        
+$quote8.|a b|"a b"                                                                           
+$quote8.|abcdefghij|"abcdef"                                                                        
+$quote8.|x|"x"                                                                             
+$quote8.|  ab  |"  ab"                                                                          
+$quote8.|ABC def|"ABC de"                                                                        
+$quote12.||""                                                                              
+$quote12.| ab|" ab"                                                                           
+$quote12.|ab |"ab"                                                                            
+$quote12.|abcdef|"abcdef"                                                                        
+$quote12.|a b|"a b"                                                                           
+$quote12.|abcdefghij|"abcdefghij"                                                                    
+$quote12.|x|"x"                                                                             
+$quote12.|  ab  |"  ab"                                                                          
+$quote12.|ABC def|"ABC def"                                                                       
+$binary16.||                                                                                
+$binary16.| ab| ab                                                                             
+$binary16.|ab |ab                                                                              
+$binary16.|abcdef|abcdef                                                                          
+$binary16.|a b|a b                                                                             
+$binary16.|abcdefghij|abcdefghij                                                                      
+$binary16.|x|x                                                                               
+$binary16.|  ab  |  ab                                                                            
+$binary16.|ABC def|ABC def                                                                         
+$octal12.||                                                                                
+$octal12.| ab| ab                                                                             
+$octal12.|ab |ab                                                                              
+$octal12.|abcdef|abcdef                                                                          
+$octal12.|a b|a b                                                                             
+$octal12.|abcdefghij|abcdefghij                                                                      
+$octal12.|x|x                                                                               
+$octal12.|  ab  |  ab                                                                            
+$octal12.|ABC def|ABC def                                                                         
+$f6.||                                                                                
+$f6.| ab| ab                                                                             
+$f6.|ab |ab                                                                              
+$f6.|abcdef|abcdef                                                                          
+$f6.|a b|a b                                                                             
+$f6.|abcdefghij|abcdef                                                                          
+$f6.|x|x                                                                               
+$f6.|  ab  |  ab                                                                            
+$f6.|ABC def|ABC de                                                                          
