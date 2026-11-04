@@ -1,0 +1,29 @@
+[package]
+name = "uniformat-sas-r"
+description = "Liaison R (extendr), non publiée sur crates.io"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "uniformat_sas_r"
+crate-type = ["staticlib", "rlib"]
+
+[features]
+# La glue extendr n'est compilée que pour construire le paquet R (elle exige une installation de R) ;
+# la conversion `data.frame` (module `convert`) est du Rust pur, testée sans R.
+r = ["dep:extendr-api"]
+
+[dependencies]
+uniformat-sas = { workspace = true }
+uniformat-sas-io = { workspace = true }
+extendr-api = { version = "0.9", optional = true }
+
+[dev-dependencies]
+uniformat-testkit = { workspace = true }
+
+[lints]
+workspace = true

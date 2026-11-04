@@ -1,0 +1,21 @@
+# Construit la crate Rust du depot (feature `r`) en bibliotheque statique, puis la lie a la bibliotheque partagee.
+# Developpement depuis le depot : la crate est `../..` ; la publication CRAN exigerait de vendre les dependances
+# (decision NULL en attente, ADR 0007).
+CRATE_DIR = $(CURDIR)/../..
+# `CARGO_TARGET_DIR` (si defini) remplace le dossier de construction local
+TARGET_DIR = $(if $(CARGO_TARGET_DIR),$(CARGO_TARGET_DIR),$(CURDIR)/rust-target)
+LIBDIR = $(TARGET_DIR)/release
+STATLIB = $(LIBDIR)/libuniformat_sas_r.a
+PKG_LIBS = -L$(LIBDIR) -luniformat_sas_r
+
+all: $(SHLIB)
+
+# cargo décide lui-même s'il faut reconstruire (étape toujours exécutée)
+.PHONY: cargo-build
+cargo-build:
+	cargo build --lib --release --features r --manifest-path="$(CRATE_DIR)/Cargo.toml" --target-dir="$(TARGET_DIR)"
+
+$(SHLIB): cargo-build
+
+clean:
+	rm -Rf $(SHLIB) $(OBJECTS) $(TARGET_DIR)

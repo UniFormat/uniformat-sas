@@ -1,0 +1,5 @@
+# Genere a la main (pas de roxygen2 requis)
+export(read_sas7bdat)
+export(sas7bdat_meta)
+export(write_sas7bdat)
+useDynLib(uniformatsas, .registration = TRUE)

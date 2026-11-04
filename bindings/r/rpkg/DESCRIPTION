@@ -1,0 +1,13 @@
+Package: uniformatsas
+Type: Package
+Title: Lecture des fichiers SAS sas7bdat (driver Rust)
+Version: 0.0.0
+Authors@R: person("Nicolas", "Rineau", email = "nicolas.rineau@rhinosys.fr", role = c("aut", "cre"))
+Description: Lit un fichier SAS .sas7bdat en data.frame avec les attributs label, format.sas et informat.sas, les valeurs
+    manquantes speciales en NA etiquetes compatibles avec haven, les dates en Date, POSIXct et hms.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+SystemRequirements: Cargo (Rust's package manager), rustc >= 1.97
+Suggests: haven, hms, testthat (>= 3.0.0)
+Config/testthat/edition: 3
