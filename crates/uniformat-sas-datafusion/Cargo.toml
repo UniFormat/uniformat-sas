@@ -1,0 +1,29 @@
+[package]
+name = "uniformat-sas-datafusion"
+description = "Adaptateur DataFusion : SasTableProvider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+uniformat-sas = { workspace = true }
+uniformat-sas-io = { workspace = true }
+uniformat-sas-arrow = { workspace = true, features = ["object-store"] }
+# Doit rester aligné sur la version d'object_store et d'arrow de DataFusion 55 (object_store 0.13, arrow 59).
+datafusion = { version = "55", default-features = false }
+object_store = { version = "0.13", default-features = false, features = ["fs"] }
+futures = "0.3"
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt"] }
+
+[dev-dependencies]
+uniformat-testkit = { workspace = true }
+datafusion = { version = "55", default-features = false, features = ["sql"] }
+object_store = { version = "0.13", features = ["fs", "http"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "time"] }
+
+[lints]
+workspace = true
