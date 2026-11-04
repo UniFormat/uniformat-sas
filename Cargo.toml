@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+exclude = ["fuzz"]
+members = [
+    "crates/uniformat-sas",
+    "crates/uniformat-sas-io",
+    "crates/uniformat-sas-arrow",
+    "crates/uniformat-sas-datafusion",
+    "crates/uniformat-sas-flight",
+    "bindings/python",
+    "bindings/r",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# ADR 0007 §3 : dernière stable - 2 (stable 1.99 au 2026-11-02), jamais sous la MSRV
+# d'arrow 59.2 (celui de datafusion 55 ; 1.85) et de datafusion 55 (1.94), lues aux jalons J0 et J4.
+rust-version = "1.97"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/UniFormat/uniformat-sas"
+publish = false
+
+[workspace.dependencies]
+# sibling repositories are cloned side by side (see README); the version range is what `cargo publish` will record
+uniformat-core = { version = ">=0.1,<0.2", path = "../uniformat-core/crates/uniformat-core" }
+uniformat-testkit = { version = ">=0.1,<0.2", path = "../uniformat-conformance/crates/uniformat-testkit" }
+uniformat-sas = { path = "crates/uniformat-sas" }
+uniformat-sas-io = { path = "crates/uniformat-sas-io" }
+uniformat-sas-arrow = { path = "crates/uniformat-sas-arrow" }
+# Liste fermée du cœur (ADR 0001) : toute autre dépendance du cœur est refusée par ci/check_core_deps.sh.
+thiserror = "2"
+encoding_rs = "0.8"
+memchr = "2"
+proptest = "1"
+
+[workspace.lints.rust]
+# `unsafe_code` est fixé par crate dans lib.rs (forbid, ou deny pour uniformat-sas-io, ADR 0007 §2).
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+print_stdout = "warn"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+# Le fuzzing et les tests exigent la détection de débordement (architecture §6.4).
+overflow-checks = true
