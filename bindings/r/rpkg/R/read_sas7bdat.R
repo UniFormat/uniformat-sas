@@ -112,6 +112,24 @@ write_sas7bdat <- function(data, path, compression = c("none", "char", "binary")
   if (!is.character(path) || length(path) != 1L || is.na(path)) {
     sas7bdat_stop("sas7bdat_usage_error", "`path` doit etre une chaine de caracteres")
   }
+  prepared <- sas_prepare_write(data)
+  cols <- prepared$columns; classes <- prepared$classes
+  labels <- prepared$labels; formats <- prepared$formats; informats <- prepared$informats
+  res <- tryCatch(
+    sas7bdat_write_native(path.expand(path), names(data), cols, classes, labels, formats, informats, compression,
+                          encoding, as.integer(page_length), on_unrepresentable),
+    error = function(e) sas7bdat_stop("sas7bdat_internal_error", conditionMessage(e))
+  )
+  if (!isTRUE(res$ok)) {
+    sas7bdat_stop(res$class, res$message)
+  }
+  for (w in res$warnings) {
+    warning(w, call. = FALSE)
+  }
+  invisible(path)
+}
+
+sas_prepare_write <- function(data) {
   n <- ncol(data)
   cols <- vector("list", n)
   classes <- character(n)
@@ -140,16 +158,5 @@ write_sas7bdat <- function(data, path, compression = c("none", "char", "binary")
   labels <- vapply(data, attr_or_na, "", a = "label", USE.NAMES = FALSE)
   formats <- vapply(data, attr_or_na, "", a = "format.sas", USE.NAMES = FALSE)
   informats <- vapply(data, attr_or_na, "", a = "informat.sas", USE.NAMES = FALSE)
-  res <- tryCatch(
-    sas7bdat_write_native(path.expand(path), names(data), cols, classes, labels, formats, informats, compression,
-                          encoding, as.integer(page_length), on_unrepresentable),
-    error = function(e) sas7bdat_stop("sas7bdat_internal_error", conditionMessage(e))
-  )
-  if (!isTRUE(res$ok)) {
-    sas7bdat_stop(res$class, res$message)
-  }
-  for (w in res$warnings) {
-    warning(w, call. = FALSE)
-  }
-  invisible(path)
+  list(columns=cols, classes=classes, labels=labels, formats=formats, informats=informats)
 }

@@ -3770,6 +3770,7 @@ dependencies = [
  "arrow-schema",
  "pyo3",
  "pyo3-arrow",
+ "uniformat-core",
  "uniformat-sas",
  "uniformat-sas-arrow",
  "uniformat-sas-io",

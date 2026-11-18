@@ -109,9 +109,6 @@ impl Format for XptFormat {
         // explicitly requires a sequential index; do not invent a row count.
         let selected = match &opts.member {
             MemberSelection::First | MemberSelection::Index(0) => None,
-            MemberSelection::Name(n) if n.eq_ignore_ascii_case(&file.metadata().header().name) => {
-                None
-            }
             _ => Some(super::reader::select(&file, &opts.member).map_err(error)?),
         };
         let meta = selected.as_ref().map_or(file.metadata(), |m| m.metadata());

@@ -180,7 +180,7 @@ fn cut_nul(s: &mut String) -> bool {
     }
 }
 
-fn format_name(f: &SasFormat) -> String {
+pub(crate) fn format_name(f: &SasFormat) -> String {
     let mut s = f.name.clone();
     if f.width > 0 {
         s.push_str(&f.width.to_string());
@@ -194,7 +194,7 @@ fn format_name(f: &SasFormat) -> String {
 
 /// Classe R d'une colonne numérique : d'après son **format** seulement (comme `haven` et l'affichage de SAS) ;
 /// un informat seul ne change pas la classe.
-fn class_of(col: &Column) -> RClass {
+pub(crate) fn class_of(col: &Column) -> RClass {
     if !matches!(col.kind, ColumnKind::Numeric { .. }) {
         return RClass::Plain;
     }
@@ -209,7 +209,7 @@ fn class_of(col: &Column) -> RClass {
     }
 }
 
-fn convert_num(class: RClass, v: NumValue) -> f64 {
+pub(crate) fn convert_num(class: RClass, v: NumValue) -> f64 {
     match v {
         NumValue::Missing(MissingKind::Dot) => na_real(),
         NumValue::Missing(MissingKind::Underscore) => tagged_na(b'_'),
@@ -488,7 +488,7 @@ impl Default for RWriteOptions {
 }
 
 /// Décompose `DATE9.`, `COMMA10.2`, `$CHAR20.` en (nom, largeur, décimales).
-fn parse_format(spec: &str) -> Option<(String, u16, u16)> {
+pub(crate) fn parse_format(spec: &str) -> Option<(String, u16, u16)> {
     let t = spec.trim().trim_end_matches('.');
     if t.is_empty() {
         return None;
@@ -504,7 +504,7 @@ fn parse_format(spec: &str) -> Option<(String, u16, u16)> {
 }
 
 /// Manquant SAS d'un NaN de R : `NA_real_` → `.`, NA étiqueté → `_` ou `.A` à `.Z` (étiquettes `haven`).
-fn missing_of(x: f64) -> MissingKind {
+pub(crate) fn missing_of(x: f64) -> MissingKind {
     match na_tag(x) {
         Some(b'_') => MissingKind::Underscore,
         Some(t) if t.is_ascii_alphabetic() => MissingKind::Letter(t.to_ascii_uppercase()),
@@ -521,9 +521,7 @@ pub fn write_table(
     columns: &[RWriteColumn],
     opts: &RWriteOptions,
 ) -> Result<(u64, Vec<String>), RError> {
-    use uniformat_sas::write::{
-        CellValue, Unrepresentable, WriteColumn, WriteEncoding, WriteOptions, WriteSchema,
-    };
+    use uniformat_sas::write::{CellValue, Unrepresentable, WriteEncoding, WriteOptions};
     use uniformat_sas_io::{system_options, SasWriter};
     let encoding = match opts.encoding.to_ascii_lowercase().as_str() {
         "utf-8" | "utf8" => WriteEncoding::Utf8,
@@ -555,6 +553,50 @@ pub fn write_table(
         RData::Real(v) => v.len(),
         RData::Str(v) => v.len(),
     });
+    let schema = write_schema(columns, encoding);
+    let wopts = WriteOptions {
+        encoding,
+        compression,
+        page_length: opts.page_length,
+        on_unrepresentable: policy,
+        ..system_options()
+    };
+    let io_err = |e: uniformat_sas_io::WriteIoError| match e {
+        uniformat_sas_io::WriteIoError::Io(io) => RError::Io(io.to_string()),
+        other => RError::Format(other.to_string()),
+    };
+    let mut w = SasWriter::create(path, &schema, wopts).map_err(io_err)?;
+    let mut cells: Vec<CellValue<'_>> = Vec::with_capacity(columns.len());
+    for i in 0..rows {
+        cells.clear();
+        for c in columns {
+            cells.push(match &c.data {
+                RData::Real(v) => match v.get(i).copied() {
+                    Some(x) if x.is_nan() => CellValue::Missing(missing_of(x)),
+                    Some(x) => CellValue::Num(match c.class {
+                        RClass::Date => x + SAS_TO_UNIX_DAYS,
+                        RClass::DateTime => x + SAS_TO_UNIX_SECONDS,
+                        _ => x,
+                    }),
+                    None => CellValue::Null,
+                },
+                RData::Str(v) => match v.get(i) {
+                    Some(Some(s)) => CellValue::Text(s),
+                    _ => CellValue::Null,
+                },
+            });
+        }
+        w.write_row(&cells).map_err(io_err)?;
+    }
+    let report = w.commit().map_err(io_err)?;
+    Ok((report.rows, report.warnings))
+}
+
+pub(crate) fn write_schema(
+    columns: &[RWriteColumn],
+    encoding: uniformat_sas::write::WriteEncoding,
+) -> uniformat_sas::write::WriteSchema {
+    use uniformat_sas::write::{WriteColumn, WriteSchema};
     let mut schema = WriteSchema::default();
     for c in columns {
         let mut col = match &c.data {
@@ -592,42 +634,7 @@ pub fn write_table(
         }
         schema.columns.push(col);
     }
-    let wopts = WriteOptions {
-        encoding,
-        compression,
-        page_length: opts.page_length,
-        on_unrepresentable: policy,
-        ..system_options()
-    };
-    let io_err = |e: uniformat_sas_io::WriteIoError| match e {
-        uniformat_sas_io::WriteIoError::Io(io) => RError::Io(io.to_string()),
-        other => RError::Format(other.to_string()),
-    };
-    let mut w = SasWriter::create(path, &schema, wopts).map_err(io_err)?;
-    let mut cells: Vec<CellValue<'_>> = Vec::with_capacity(columns.len());
-    for i in 0..rows {
-        cells.clear();
-        for c in columns {
-            cells.push(match &c.data {
-                RData::Real(v) => match v.get(i).copied() {
-                    Some(x) if x.is_nan() => CellValue::Missing(missing_of(x)),
-                    Some(x) => CellValue::Num(match c.class {
-                        RClass::Date => x + SAS_TO_UNIX_DAYS,
-                        RClass::DateTime => x + SAS_TO_UNIX_SECONDS,
-                        _ => x,
-                    }),
-                    None => CellValue::Null,
-                },
-                RData::Str(v) => match v.get(i) {
-                    Some(Some(s)) => CellValue::Text(s),
-                    _ => CellValue::Null,
-                },
-            });
-        }
-        w.write_row(&cells).map_err(io_err)?;
-    }
-    let report = w.commit().map_err(io_err)?;
-    Ok((report.rows, report.warnings))
+    schema
 }
 
 #[cfg(test)]

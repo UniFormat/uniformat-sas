@@ -19,6 +19,7 @@ classifiers = [
 
 [project.entry-points."uniformat_io.formats"]
 sas = "uniformat_io.sas:FORMAT"
+xpt = "uniformat_io.sas:XPT_FORMAT"
 
 [project.optional-dependencies]
 pandas = ["pandas>=2", "pyarrow>=15"]

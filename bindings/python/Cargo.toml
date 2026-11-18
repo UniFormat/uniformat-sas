@@ -13,6 +13,7 @@ name = "_native"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+uniformat-core = { workspace = true }
 uniformat-sas = { workspace = true }
 uniformat-sas-io = { workspace = true }
 uniformat-sas-arrow = { workspace = true }

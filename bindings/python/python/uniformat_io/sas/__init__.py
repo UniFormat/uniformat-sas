@@ -352,6 +352,49 @@ def write_sas(
 
     L'écriture est transactionnelle : aucun fichier n'est laissé en cas d'erreur. Rend le rapport (dictionnaire).
     """
+    table = _prepare_table(data, column_labels, formats, informats, lengths, missing_suffix)
+    return _native.write_table(
+        os.fspath(path),
+        table,
+        compression=compression or "none",
+        encoding=encoding,
+        page_length=page_length,
+        grow_page=grow_page,
+        on_unrepresentable=on_unrepresentable,
+        missing_suffix=missing_suffix,
+        table_name=table_name,
+        file_code=file_code,
+        created=created,
+    )
+
+
+def _core_read(path, **options):
+    return read_sas_table(path, **options)
+
+
+def _core_write(path, data, **options):
+    return write_sas(path, data, **options)
+
+
+def _make_format():
+    from uniformat_io.core import Format
+
+    return Format(
+        name="sas7bdat",
+        extensions=("sas7bdat",),
+        read_table=_core_read,
+        write_table=_core_write,
+        schema=schema,
+        metadata=metadata,
+        description="SAS data sets (.sas7bdat), plain or compressed (RLE, RDC)",
+    )
+
+
+#: Format description registered under the ``uniformat_io.formats`` entry-point group.
+FORMAT = _make_format()
+
+
+def _prepare_table(data, column_labels=None, formats=None, informats=None, lengths=None, missing_suffix="__missing"):
     pa = _pa()
     attrs = getattr(data, "attrs", None) or {}
     table = _to_arrow(data)
@@ -398,42 +441,8 @@ def write_sas(
     table = table.cast(pa.schema(fields, metadata=table.schema.metadata)) if False else pa.Table.from_arrays(
         table.columns, schema=pa.schema(fields, metadata=table.schema.metadata)
     )
-    return _native.write_table(
-        os.fspath(path),
-        table,
-        compression=compression or "none",
-        encoding=encoding,
-        page_length=page_length,
-        grow_page=grow_page,
-        on_unrepresentable=on_unrepresentable,
-        missing_suffix=missing_suffix,
-        table_name=table_name,
-        file_code=file_code,
-        created=created,
-    )
+    return table
 
 
-def _core_read(path, **options):
-    return read_sas_table(path, **options)
-
-
-def _core_write(path, data, **options):
-    return write_sas(path, data, **options)
-
-
-def _make_format():
-    from uniformat_io.core import Format
-
-    return Format(
-        name="sas7bdat",
-        extensions=("sas7bdat",),
-        read_table=_core_read,
-        write_table=_core_write,
-        schema=schema,
-        metadata=metadata,
-        description="SAS data sets (.sas7bdat), plain or compressed (RLE, RDC)",
-    )
-
-
-#: Format description registered under the ``uniformat_io.formats`` entry-point group.
-FORMAT = _make_format()
+from .xpt import XPT_FORMAT, read_xpt, read_xpt_table, write_xpt, xpt_schema
+__all__ += ["XPT_FORMAT", "read_xpt", "read_xpt_table", "write_xpt", "xpt_schema"]

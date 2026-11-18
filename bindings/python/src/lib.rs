@@ -9,6 +9,8 @@
 //! Le code de ce crate ne contient aucun bloc `unsafe` ; seul le code généré par PyO3 en contient (ADR 0007 §2).
 #![deny(unsafe_code)]
 
+mod xpt;
+
 use std::ffi::CString;
 use std::sync::Arc;
 
@@ -716,6 +718,7 @@ fn _version() -> &'static str {
 
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    xpt::register(m)?;
     m.add_function(wrap_pyfunction!(read_sas, m)?)?;
     m.add_function(wrap_pyfunction!(read_table, m)?)?;
     m.add_function(wrap_pyfunction!(schema, m)?)?;
