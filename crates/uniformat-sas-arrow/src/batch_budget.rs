@@ -2,10 +2,18 @@
 use crate::error::{Error, Result};
 use crate::options::ReadOptions;
 use crate::schema::{FieldPlan, Repr};
-use uniformat_sas::TableMeta;
+use uniformat_sas::{Column, TableMeta};
 
 pub(crate) fn max_rows(
     meta: &TableMeta,
+    fields: &[FieldPlan],
+    opts: &ReadOptions,
+) -> Result<usize> {
+    column_max_rows(&meta.columns, fields, opts)
+}
+
+pub(crate) fn column_max_rows(
+    columns: &[Column],
     fields: &[FieldPlan],
     opts: &ReadOptions,
 ) -> Result<usize> {
@@ -18,7 +26,7 @@ pub(crate) fn max_rows(
         .checked_sub(overhead)
         .ok_or_else(exceeded)?;
     let row_bytes = fields.iter().try_fold(1usize, |sum, p| {
-        let width = meta.columns[p.source].width();
+        let width = columns[p.source].width();
         let data = match p.repr {
             Repr::Utf8 => width.checked_mul(3).and_then(|n| n.checked_add(8)),
             Repr::Binary => width.checked_add(8),

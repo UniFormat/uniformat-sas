@@ -7,14 +7,19 @@
 
 mod assembler;
 mod batch_budget;
+mod column_append;
+mod column_builder;
 mod error;
 mod format;
 #[cfg(feature = "object-store")]
 mod object;
 mod options;
 mod reader;
+mod row_values;
 mod schema;
 mod writer;
+mod writer_rows;
+pub mod xpt;
 
 pub use assembler::{BatchAssembler, ReadStats};
 pub use error::{Error, Result};

@@ -21,11 +21,10 @@ use arrow_array::{Array, ArrayRef, RecordBatch};
 use arrow_schema::{DataType, SchemaRef, TimeUnit};
 use uniformat_sas::temporal::{max_day, DAYS_1960_TO_1970, MIN_DAY, SECONDS_1960_TO_1970};
 use uniformat_sas::write::{
-    CellProblem, CellValue, Unrepresentable, WriteColumn, WriteEncoding, WriteError, WriteOptions,
-    WriteReport, WriteSchema,
+    CellProblem, WriteColumn, WriteEncoding, WriteOptions, WriteReport, WriteSchema,
 };
 use uniformat_sas::MissingKind;
-use uniformat_sas_io::{AtomicFile, SasWriter, WriteIoError};
+use uniformat_sas_io::{AtomicFile, SasWriter};
 
 use crate::error::{Error, Result};
 
@@ -57,12 +56,12 @@ enum Role {
 }
 
 #[derive(Debug, Clone)]
-struct FieldPlan {
+pub(crate) struct FieldPlan {
     role: Role,
     /// Colonne SAS correspondante (rang dans `WriteSchema`) pour `Column`.
-    out: Option<usize>,
+    pub(crate) out: Option<usize>,
     /// Pour une colonne numérique : rang du champ Arrow de sa colonne annexe.
-    sidecar: Option<usize>,
+    pub(crate) sidecar: Option<usize>,
 }
 
 fn metadata_u16(f: &arrow_schema::Field, key: &str) -> u16 {
@@ -72,7 +71,7 @@ fn metadata_u16(f: &arrow_schema::Field, key: &str) -> u16 {
         .unwrap_or(0)
 }
 
-fn is_numeric_type(t: &DataType) -> bool {
+pub(crate) fn is_numeric_type(t: &DataType) -> bool {
     use DataType as T;
     matches!(
         t,
@@ -181,7 +180,10 @@ pub fn write_schema_from_arrow(
     Ok(ws)
 }
 
-fn plan(schema: &SchemaRef, opts: &ArrowWriteOptions) -> Result<(WriteSchema, Vec<FieldPlan>)> {
+pub(crate) fn plan(
+    schema: &SchemaRef,
+    opts: &ArrowWriteOptions,
+) -> Result<(WriteSchema, Vec<FieldPlan>)> {
     let fields = schema.fields();
     let mut roles: Vec<FieldPlan> = fields
         .iter()
@@ -281,7 +283,7 @@ fn plan(schema: &SchemaRef, opts: &ArrowWriteOptions) -> Result<(WriteSchema, Ve
     Ok((WriteSchema { columns }, roles))
 }
 
-fn missing_from_code(code: u8) -> Option<MissingKind> {
+pub(crate) fn missing_from_code(code: u8) -> Option<MissingKind> {
     match code {
         0 => None,
         1 => Some(MissingKind::Dot),
@@ -294,7 +296,7 @@ fn missing_from_code(code: u8) -> Option<MissingKind> {
 const TWO_53: i64 = 1 << 53;
 
 /// Valeur numérique (ou manquant) d'une cellule d'un tableau Arrow, en secondes/jours SAS pour les dates.
-enum Num {
+pub(crate) enum Num {
     Null,
     Value(f64),
     /// Valeur arrondie (entier de plus de 53 bits ou décimal inexact) : compteur `inexact_integers`.
@@ -323,7 +325,7 @@ fn int_num(v: i64) -> Num {
     }
 }
 
-fn numeric_cell(col: &ArrayRef, i: usize) -> Num {
+pub(crate) fn numeric_cell(col: &ArrayRef, i: usize) -> Num {
     if col.is_null(i) {
         return Num::Null;
     }
@@ -420,16 +422,13 @@ fn numeric_cell(col: &ArrayRef, i: usize) -> Num {
 /// Écrivain de lots Arrow.
 pub struct ArrowWriter<W: Write + Seek> {
     inner: SasWriter<W>,
-    schema: SchemaRef,
-    plan: Vec<FieldPlan>,
-    policy: Unrepresentable,
-    rows: u64,
+    encoder: crate::writer_rows::RowEncoder,
 }
 
 impl<W: Write + Seek> std::fmt::Debug for ArrowWriter<W> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ArrowWriter")
-            .field("rows", &self.rows)
+            .field("rows", &self.encoder.rows)
             .finish_non_exhaustive()
     }
 }
@@ -440,8 +439,7 @@ impl<W: Write + Seek> ArrowWriter<W> {
     /// # Errors
     /// Type non pris en charge, longueur caractère inconnue, limite de schéma dépassée.
     pub fn try_new(sink: W, schema: SchemaRef, opts: ArrowWriteOptions) -> Result<Self> {
-        let (ws, plan) = self::plan(&schema, &opts)?;
-        let policy = opts.write.on_unrepresentable;
+        let (ws, encoder) = crate::writer_rows::RowEncoder::new(schema.clone(), &opts, false)?;
         let mut wopts = opts.write;
         if wopts.table_name.is_empty() {
             if let Some(n) = schema.metadata().get("sas.table_name") {
@@ -449,13 +447,7 @@ impl<W: Write + Seek> ArrowWriter<W> {
             }
         }
         let inner = SasWriter::new(sink, &ws, wopts)?;
-        Ok(Self {
-            inner,
-            schema,
-            plan,
-            policy,
-            rows: 0,
-        })
+        Ok(Self { inner, encoder })
     }
 
     /// Taille de page finalement utilisée.
@@ -475,83 +467,14 @@ impl<W: Write + Seek> ArrowWriter<W> {
     /// # Errors
     /// Schéma différent, valeur non représentable, erreur d'entrée/sortie.
     pub fn write(&mut self, batch: &RecordBatch) -> Result<()> {
-        if batch.schema().fields() != self.schema.fields() {
-            return Err(Error::Unsupported("le lot n'a pas le schéma de l'écrivain"));
-        }
-        let cols: Vec<ArrayRef> = batch
-            .columns()
-            .iter()
-            .map(|c| match c.data_type() {
-                DataType::Dictionary(_, v) => arrow_cast::cast(c, v).map_err(Error::Arrow),
-                _ => Ok(c.clone()),
-            })
-            .collect::<Result<_>>()?;
-        let n_out = self.plan.iter().filter(|p| p.out.is_some()).count();
-        for i in 0..batch.num_rows() {
-            let mut cells: Vec<CellValue<'_>> = Vec::with_capacity(n_out);
-            let mut inexact = 0u64;
-            for (fi, p) in self.plan.iter().enumerate() {
-                let Some(out) = p.out else { continue };
-                let Some(col) = cols.get(fi) else { continue };
-                let cell = if is_numeric_type(col.data_type()) {
-                    let sidecar = p
-                        .sidecar
-                        .and_then(|s| cols.get(s))
-                        .filter(|c| !c.is_null(i))
-                        .map(|c| c.as_primitive::<UInt8Type>().value(i));
-                    match sidecar.and_then(missing_from_code) {
-                        Some(m) => CellValue::Missing(m),
-                        None => match numeric_cell(col, i) {
-                            Num::Null => CellValue::Null,
-                            Num::Value(v) => CellValue::Num(v),
-                            Num::Inexact(v) => match self.policy {
-                                Unrepresentable::Replace => {
-                                    inexact = inexact.saturating_add(1);
-                                    CellValue::Num(v)
-                                }
-                                _ => return Err(self.cell_error(out, CellProblem::IntegerTooLarge)),
-                            },
-                            Num::Bad(CellProblem::OutOfRange) => match self.policy {
-                                Unrepresentable::Replace => CellValue::Null,
-                                _ => return Err(self.cell_error(out, CellProblem::OutOfRange)),
-                            },
-                            Num::Bad(p) => return Err(self.cell_error(out, p)),
-                        },
-                    }
-                } else if col.is_null(i) {
-                    CellValue::Null
-                } else {
-                    match col.data_type() {
-                        DataType::Utf8 => CellValue::Text(col.as_string::<i32>().value(i)),
-                        DataType::LargeUtf8 => CellValue::Text(col.as_string::<i64>().value(i)),
-                        DataType::Utf8View => CellValue::Text(col.as_string_view().value(i)),
-                        DataType::Binary => CellValue::Bytes(col.as_binary::<i32>().value(i)),
-                        DataType::LargeBinary => CellValue::Bytes(col.as_binary::<i64>().value(i)),
-                        DataType::FixedSizeBinary(_) => {
-                            CellValue::Bytes(col.as_fixed_size_binary().value(i))
-                        }
-                        _ => return Err(self.cell_error(out, CellProblem::WrongType)),
-                    }
-                };
-                cells.push(cell);
+        let inner = &mut self.inner;
+        self.encoder.write(batch, |cells, inexact| {
+            inner.write_row(cells)?;
+            if let Some(report) = inner.report_mut() {
+                report.inexact_integers = report.inexact_integers.saturating_add(inexact);
             }
-            self.inner.write_row(&cells)?;
-            if inexact > 0 {
-                if let Some(r) = self.inner.report_mut() {
-                    r.inexact_integers = r.inexact_integers.saturating_add(inexact);
-                }
-            }
-            self.rows = self.rows.saturating_add(1);
-        }
-        Ok(())
-    }
-
-    fn cell_error(&self, column: usize, problem: CellProblem) -> Error {
-        Error::Write(WriteIoError::Write(WriteError::Cell {
-            column,
-            row: self.rows,
-            problem,
-        }))
+            Ok(())
+        })
     }
 
     /// Termine le fichier et rend le flux et le rapport.
@@ -573,8 +496,7 @@ impl ArrowWriter<AtomicFile> {
         schema: SchemaRef,
         opts: ArrowWriteOptions,
     ) -> Result<Self> {
-        let (ws, plan) = self::plan(&schema, &opts)?;
-        let policy = opts.write.on_unrepresentable;
+        let (ws, encoder) = crate::writer_rows::RowEncoder::new(schema.clone(), &opts, false)?;
         let mut wopts = opts.write;
         if wopts.table_name.is_empty() {
             if let Some(n) = schema.metadata().get("sas.table_name") {
@@ -582,13 +504,7 @@ impl ArrowWriter<AtomicFile> {
             }
         }
         let inner = SasWriter::create(path, &ws, wopts)?;
-        Ok(Self {
-            inner,
-            schema,
-            plan,
-            policy,
-            rows: 0,
-        })
+        Ok(Self { inner, encoder })
     }
 
     /// Termine l'écriture et renomme le fichier temporaire.

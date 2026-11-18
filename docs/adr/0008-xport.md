@@ -17,3 +17,10 @@ ambigus. Les observations sont ensuite lues une par une avec une mémoire borné
 Conséquences : le premier lot est utilisable en Rust sans dépendance Arrow,
 conforme à la liste fermée des dépendances. Les adaptateurs et la v8 restent des
 jalons séparés de #1 ; une détection LIBV8 ne vaut pas une prise en charge v8.
+
+## Validation des décisions
+
+Le 18 novembre 2026, l'utilisateur a confirmé les sept décisions : v5 avant v8,
+UTF-8 par défaut avec Latin-1 et Windows-1252 explicites, NaN en manquant SAS,
+dates reproductibles, refus des fins ambiguës, transactions et ouverture du
+schéma sans données. La suite de #1 applique ces choix aux adaptateurs.
