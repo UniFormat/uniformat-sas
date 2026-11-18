@@ -18,6 +18,7 @@ mod page;
 mod report;
 pub mod temporal;
 pub mod write;
+pub mod xpt;
 
 pub use bytes::Endian;
 pub use encoding::{encoding_for_code, encoding_info, encodings, EncodingInfo};

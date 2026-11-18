@@ -25,7 +25,7 @@ sont `HEADER RECORD*******`, un nom sur 8 caractères, puis
 | LIBRARY | début de bibliothèque |
 | réel 1 | SAS(8), SAS(8), SASLIB(8), version(8), OS(8), blancs(24), création(16) |
 | réel 2 | modification(16), blancs(64) |
-| MEMBER | champs décimaux : 160 à [62,67), taille NAMESTR à [75,78) |
+| MEMBER | champs décimaux : 160 à [63,68), taille NAMESTR à [75,78) |
 | DSCRPTR | début des métadonnées du membre |
 | membre 1 | SAS(8), nom(8), SASDATA(8), version(8), OS(8), blancs(24), création(16) |
 | membre 2 | modification(16), blancs(16), label(40), type(8) |
