@@ -24,3 +24,9 @@ build/
 .env.*
 *.pem
 *.key
+
+# standalone fuzz workspace outputs
+/fuzz/target/
+/fuzz/Cargo.lock
+/fuzz/artifacts/
+/fuzz/corpus/

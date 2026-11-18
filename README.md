@@ -15,7 +15,7 @@ It depends only on [`uniformat-core`](https://github.com/UniFormat/uniformat-cor
 | Path | Crate / package | Role |
 |---|---|---|
 | `crates/uniformat-sas` | `uniformat-sas` | codec on byte buffers, no I/O, three dependencies (`thiserror`, `encoding_rs`, `memchr`) |
-| `crates/uniformat-sas-io` | `uniformat-sas-io` | `SasFile`, page plans, `SasWriter` over `uniformat-core` byte sources |
+| `crates/uniformat-sas-io` | `uniformat-sas-io` | `SasFile`, page plans, `SasWriter`; XPORT `XptFile` / `XptWriter` over `uniformat-core` byte sources |
 | `crates/uniformat-sas-arrow` | `uniformat-sas-arrow` | Arrow schema, batches, writer; implements `uniformat_core::Format` |
 | `crates/uniformat-sas-datafusion` | `uniformat-sas-datafusion` | DataFusion `TableProvider` |
 | `crates/uniformat-sas-flight` | `uniformat-sas-flight` | Arrow Flight server (`uniformat-sas-flight-server`) |
@@ -36,6 +36,42 @@ sas.write_sas("copy.sas7bdat", tbl, compression="binary")
 ```bash
 uniformat convert data.sas7bdat copy.sas7bdat --write-opt compression=char   # uniformat-cli
 ```
+
+## XPORT v5 — Rust foundation (issue #1)
+
+The first XPORT development milestone provides `uniformat_sas::xpt` (IBM numbers,
+NAMESTR metadata, row codec) and `uniformat_sas_io::{XptFile, XptWriter}`. The writer
+is transactional and deterministic. Special missing values are preserved. UTF-8 is
+strict by default; Latin-1 and Windows-1252 are explicit options.
+
+```rust,no_run
+use uniformat_sas::xpt::Row;
+use uniformat_sas_io::{FileSource, XptFile, XptOpenOptions};
+
+# fn main() -> Result<(), Box<dyn std::error::Error>> {
+let file = XptFile::open(FileSource::open("study.xpt")?, XptOpenOptions::default())?;
+let columns = file.metadata().columns(); // first schema; no observations read
+let members = file.members()?;           // explicit sequential indexing pass
+for member in &members {
+    for bytes in file.rows(member) {
+        let bytes = bytes?;
+        let row = Row::new(&bytes, member.metadata())?;
+        // row.number(column_index)? / row.text(column_index, trim_trailing)?
+    }
+}
+# Ok(())
+# }
+```
+
+See the [specification](docs/spec/xpt.md), [ADR](docs/adr/0008-xport.md) and
+[synthetic fixture / interoperability instructions](tests/data/xpt/README.md).
+Trailing all-blank short rows and literal member-marker pairs are ambiguous in
+XPORT: writes that cannot round-trip are rejected. Listing members scans the file.
+
+**Still pending in #1:** Arrow batches/sidecars, `uniformat_core::Format`, CLI,
+Python/R APIs, benchmarks, and v8 long names/labels. LIBV8 is detected and returns
+an explicit unsupported error. Existing Python/R/CLI examples above remain for
+sas7bdat only.
 
 ## Development
 

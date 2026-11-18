@@ -42,3 +42,9 @@ name = "fuzz_rdc"
 path = "fuzz_targets/fuzz_rdc.rs"
 test = false
 doc = false
+
+[[bin]]
+name = "fuzz_xpt"
+path = "fuzz_targets/fuzz_xpt.rs"
+test = false
+doc = false

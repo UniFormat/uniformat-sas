@@ -8,6 +8,8 @@ mod error;
 mod file;
 mod plan;
 mod write;
+pub mod xpt;
+pub use xpt::{XptFile, XptOpenOptions, XptWriter};
 
 pub use error::{IoError, Result};
 pub use file::{OpenOptions, SasFile};
