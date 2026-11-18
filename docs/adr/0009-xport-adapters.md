@@ -21,3 +21,10 @@ index. Le premier schéma reste accessible sans cette indexation.
 Python utilise l'adaptateur Arrow. R utilise directement `uniformat-sas-io`,
 conformément au graphe de dépendances existant ; les NA étiquetés de haven
 préservent les manquants spéciaux. Le registre commun expose `xpt` à la CLI.
+
+La restitution temporelle native utilise la microseconde. À l'écriture XPT,
+les Date64 qui ne représentent pas un jour entier, les fractions plus fines que
+la microseconde et les valeurs qui perdent leur précision lors du passage par
+les secondes SAS sont refusées. `dates=float` permet de relire les valeurs SAS
+brutes sans conversion temporelle. Les booléens et entiers se relisent comme
+nombres SAS ; leur type Arrow initial n'est pas encodé dans XPORT.

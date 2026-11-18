@@ -1,5 +1,6 @@
 //! XPORT adapters: bounded Arrow streams and transactional writes.
 mod format;
+pub(crate) mod numeric;
 mod options;
 mod reader;
 mod schema;

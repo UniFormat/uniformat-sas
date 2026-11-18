@@ -277,3 +277,34 @@ fn metadata_schema_does_not_need_observations() {
     assert_eq!(schema.fields().len(), 2);
     assert_eq!(schema.metadata()["xpt.version"], "5");
 }
+
+#[test]
+fn temporal_precision_loss_is_rejected_before_commit() {
+    for array in [
+        Arc::new(arrow_array::Date64Array::from(vec![1])) as ArrayRef,
+        Arc::new(arrow_array::TimestampNanosecondArray::from(vec![1])) as ArrayRef,
+        Arc::new(arrow_array::Time64NanosecondArray::from(vec![1])) as ArrayRef,
+    ] {
+        let batch = RecordBatch::try_from_iter(vec![("VALUE", array)]).unwrap();
+        let mut writer =
+            XptArrowWriter::try_new(Vec::new(), batch.schema(), Default::default()).unwrap();
+        assert!(writer.write(&batch).is_err());
+        assert!(writer.finish().is_err());
+    }
+    let batch = RecordBatch::try_from_iter(vec![(
+        "VALUE",
+        Arc::new(arrow_array::TimestampNanosecondArray::from(vec![
+            1_000_000_000,
+        ])) as ArrayRef,
+    )])
+    .unwrap();
+    let back = decode(encode(&batch, Default::default()), Default::default());
+    assert_eq!(
+        back.column(0)
+            .as_any()
+            .downcast_ref::<TimestampMicrosecondArray>()
+            .unwrap()
+            .value(0),
+        1_000_000
+    );
+}

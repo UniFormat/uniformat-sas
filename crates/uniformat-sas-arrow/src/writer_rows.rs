@@ -19,6 +19,9 @@ impl RowEncoder {
         opts: &ArrowWriteOptions,
         strict: bool,
     ) -> Result<(WriteSchema, Self)> {
+        if strict && opts.missing_suffix.is_empty() {
+            return Err(Error::Unsupported("XPT missing suffix must not be empty"));
+        }
         let (ws, plan) = plan(&schema, opts)?;
         Ok((
             ws,
@@ -69,7 +72,12 @@ impl RowEncoder {
                         Some(m) => CellValue::Missing(m),
                         None => match numeric_cell(col, i) {
                             Num::Null => CellValue::Null,
-                            Num::Value(v) => CellValue::Num(v),
+                            Num::Value(v) => {
+                                if self.strict {
+                                    crate::xpt::numeric::check(col, i, v)?;
+                                }
+                                CellValue::Num(v)
+                            }
                             Num::Inexact(v) => match self.policy {
                                 Unrepresentable::Replace => {
                                     inexact = inexact.saturating_add(1);
