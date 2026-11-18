@@ -381,3 +381,15 @@ Le crate et le module sont ceux du cœur `sas7bdat` sauf indication. « n/a v1 �
 - **Déterminisme** : à entrée égale, l'écriture produit des pages identiques, sauf `file_code` et horodatages (paramétrables pour les tests).
 - **Journalisation** : le cœur ne journalise pas ; il remonte une liste typée d'avertissements (`ReadReport`) que l'adaptateur transforme en `log`/`warnings.warn`/`warning()`.
 - **Documentation des inconnus** : chaque avertissement porte l'identifiant de `60_inconnues.md` (par exemple `U19`) pour retrouver la décision.
+
+## Extension XPORT (issue #1, premier lot)
+
+Le module `uniformat_sas::xpt` est un codec indépendant du format paginé sas7bdat.
+`uniformat_sas_io::XptFile` ouvre les métadonnées du premier membre sans lire les
+observations ; `members()` indexe explicitement le conteneur. `XptWriter` utilise
+`AtomicFile`, valide avant création et interdit tout commit après une erreur.
+Voir [ADR 0008](adr/0008-xport.md) et [spécification XPORT](spec/xpt.md).
+
+TODO(agent) : brancher les adaptateurs Arrow, Format/CLI et langages sur ces API,
+puis valider v8 sur des fixtures indépendantes. Ne pas réutiliser le décodeur IEEE
+de sas7bdat pour les nombres IBM, ni annoncer un nombre de lignes sans indexation.

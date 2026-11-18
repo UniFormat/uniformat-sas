@@ -43,3 +43,17 @@ Corpus-dependent Rust tests are explicitly ignored by default and fail if invoke
 All workspace dependency locks are tracked; CI checks out sibling repositories at full commit SHAs before either builds or audits. Actions and reusable workflows are pinned, permissions are read-only, and checkout credentials are not retained. Python CI uses hashed dependency locks. `deny.toml` includes development dependencies and hides no advisory. CI keeps maintenance-only advisories visible as warnings (`--warn unmaintained`); vulnerabilities, unsoundness and yanked versions remain errors. The informational RUSTSEC-2024-0436 warning remains visible for paste, a build-time macro required by extendr 0.9: no maintained compatible upstream release is available at this audit date. It is a maintenance warning, not a detected runtime vulnerability; recheck it when updating extendr.
 
 Re-run dependency and secret scans after changing dependencies or before publishing. Local validation does not configure GitHub branch protection, secret protection or production proxy settings.
+
+## XPORT v5
+
+Le codec borne les descripteurs (9999 et `Limits::max_columns`), les longueurs, les
+offsets, les chevauchements et le budget de métadonnées avant allocation. Le
+lecteur impose des enregistrements de 80 octets ; l'index limite le nombre de
+membres et le volume cumulé des descripteurs. Le parcours utilise au plus 64 080
+octets de tampon ; l'itérateur ne retient qu'une observation par appel.
+
+Une paire MEMBER/DSCRPTR alignée peut être présente dans du texte arbitraire :
+c'est une ambiguïté du format, documentée dans `spec/xpt.md`. L'écrivain refuse
+cette collision et les fins de table ambiguës. Une erreur rend l'écrivain
+inutilisable ; aucun commit d'un fichier partiel n'est possible.
+La cible `fuzz_xpt` couvre bibliothèque, descripteurs, index et cellules.
