@@ -95,6 +95,25 @@ fn boundaries_and_ties_round_to_even() {
         NumValue::Value(f64::from_bits(0.5f64.to_bits() + 2))
     );
 }
+#[test]
+fn saturated_ibm_values_match_sas_and_stay_rewritable() {
+    for (word, expected) in [
+        (0x7fff_ffff_ffff_ffffu64, 0x4faf_ffff_ffff_ffffu64),
+        (0xffff_ffff_ffff_ffffu64, 0xcfaf_ffff_ffff_ffffu64),
+        (0x7fff_ff00_0000_0000u64, 0x4faf_ffe0_0000_0000u64),
+    ] {
+        let value = decode_number(&word.to_be_bytes()).unwrap();
+        assert_eq!(value, NumValue::Value(f64::from_bits(expected)));
+        let encoded = encode_number(value).unwrap();
+        assert_eq!(decode_number(&encoded).unwrap(), value);
+    }
+    // Saturation is limited to the upper boundary; interior rounding is unchanged.
+    assert_eq!(
+        decode_number(&0x7eff_ffff_ffff_ffffu64.to_be_bytes()).unwrap(),
+        NumValue::Value(2f64.powi(248))
+    );
+}
+
 fn schema() -> WriteSchema {
     WriteSchema {
         columns: vec![

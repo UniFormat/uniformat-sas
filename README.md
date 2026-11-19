@@ -89,10 +89,15 @@ streaming writes. Python table reads have a separate 256 MiB retained-buffer
 budget. Numeric, boolean and integer values map to SAS numbers; native temporal
 types carry SAS formats. Keep sidecars when converting special missing values.
 
-**Still pending in #1:** validation with a complete SAS XPORT installation,
-benchmarks, and v8 long names/labels. The minimal local SAS runtime lacks the
-XPORT engine. Use the [reference collection prompt](docs/xpt-sas-reference-prompt.md)
-to obtain independent SAS evidence. LIBV8 remains explicitly unsupported.
+SAS-produced v5 references have now been validated: 14 files, 15 members,
+116 observations, all 28 missing codes, and exact round trips through Arrow.
+The [validation report](docs/xpt-sas-validation.md) documents the IBM upper-bound
+fix and the explicit Windows-1252 option needed for the observed SAS LATIN1
+Euro byte. Licensed reference files remain outside git.
+
+A reproducible throughput probe is available with
+`cargo run --release -p uniformat-sas-arrow --example xpt_benchmark -- 100000`.
+**Still pending in #1:** v8 long names/labels; LIBV8 remains explicitly unsupported.
 
 ## Development
 

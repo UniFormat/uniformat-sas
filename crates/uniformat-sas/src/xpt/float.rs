@@ -5,6 +5,8 @@ use crate::{MissingKind, NumValue, Result};
 /// Decode an IBM number of 2–8 bytes, including SAS tagged missing values.
 /// The integer-to-f64 conversion rounds to nearest, ties to even; power-of-two
 /// scaling is exact throughout the IBM range (no IEEE subnormals or overflow).
+/// Rounding beyond the IBM upper bound is clamped to its largest representable
+/// f64, matching SAS's re-read of saturated transport values.
 pub fn decode_number(input: &[u8]) -> Result<NumValue> {
     if !(2..=8).contains(&input.len()) {
         return Err(invalid("XPT numeric width (2..8)"));
@@ -31,9 +33,11 @@ pub fn decode_number(input: &[u8]) -> Result<NumValue> {
         .saturating_mul(4)
         .saturating_sub(56);
     let sign = if tag & 0x80 != 0 { -1.0 } else { 1.0 };
-    Ok(NumValue::Value(
-        sign * (mantissa as f64) * 2.0_f64.powi(exponent),
-    ))
+    let magnitude = (mantissa as f64) * 2.0_f64.powi(exponent);
+    // ARCHITECTURE NOTE: a full 56-bit mantissa can round up to 2^252, which
+    // cannot be written back to XPORT. SAS returns the preceding f64 instead.
+    let magnitude = magnitude.min(f64::from_bits(0x4faf_ffff_ffff_ffff));
+    Ok(NumValue::Value(sign * magnitude))
 }
 
 /// Encode a number exactly as an eight-byte normalized IBM number.

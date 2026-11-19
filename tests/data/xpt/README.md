@@ -21,9 +21,15 @@ UNIFORMAT_XPT_REFERENCE=/tmp/reference-v5.xpt cargo test -p uniformat-sas-io --t
 
 The script compares our file with pandas and ReadStat, then optionally generates a
 reference with ReadStat for the reverse-direction Rust test. Reference data are
-synthetic too, but that generated file is intentionally not committed. No actual
-SAS installation has been used to validate this first lot. A SAS-produced file can
-be tested with the same ignored test if it contains the specified VALUE/TEXT rows.
+synthetic too, but that generated file is intentionally not committed. The first lot used only these synthetic references. The subsequent integration
+was validated against an externally supplied SAS 9.4 corpus; see
+[the validation report](../../../docs/xpt-sas-validation.md).
+
+`validate_sas_reference.py /path/sas-xpt-v5-reference` checks that corpus through
+the Python/Arrow binding, including 15 members, exact IEEE values, missing codes,
+encodings, metadata, native dates and round trips. Set `UNIFORMAT_XPT_SAS_CORPUS`
+to enable `bindings/python/tests/test_xpt_sas_reference.py`. Never commit the
+external archive, extracted XPT files or SAS reference CSVs.
 
 Seed the fuzz target with `v5-synthetic.xpt`; use a temporary corpus directory so
 mutated artifacts never enter this fixture directory:

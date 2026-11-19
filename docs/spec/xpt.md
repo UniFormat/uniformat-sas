@@ -1,6 +1,6 @@
 # SAS Transport XPORT — v5
 
-Statut : spécification du premier lot de l'issue #1. CPORT est exclu. La v8 est
+Statut : v5 implémentée et validée sur le corpus externe SAS 9.4 de l'issue #1. CPORT est exclu. La v8 est
 reconnue mais refusée explicitement tant que LABELV8/LABELV9 ne sont pas validés.
 
 ## Sources et discipline
@@ -12,7 +12,8 @@ reconnue mais refusée explicitement tant que LABELV8/LABELV9 ne sont pas valid�
   `ReadStat/src/sas/readstat_xport_write.c` (MIT). **Pas de lecture de `ieee.c`.**
   Le codec numérique est dérivé de la définition mathématique du format IBM.
 - Les fixtures commises sont synthétiques, générées par notre code ; les tests
-  de fichiers SAS externes sont ignorés par défaut. Aucun corpus SAS sous licence.
+  de fichiers SAS externes sont ignorés par défaut. Aucun corpus SAS sous licence
+  n’est commis. Voir [la validation du 19 novembre 2026](../xpt-sas-validation.md).
 
 ## Structure v5
 
@@ -79,19 +80,27 @@ Un bloc incomplet ou un résidu non blanc est une erreur, jamais ignoré.
 `(-1)^s × mantisse × 2^(4×(exposant-64)-56)`, exposant sur 7 bits, mantisse entière
 sur 56 bits. Les longueurs courtes sont complétées par des zéros à droite.
 Conversion vers f64 : arrondi IEEE au plus proche, égalité au pair, puis facteur
-puissance de deux exact. Écriture : normalisation hexadécimale exacte d'un f64 ;
+puissance de deux exact. À la borne supérieure seulement, si cet arrondi atteint
+2^252, le résultat est ramené au plus grand f64 inférieur à 2^252, avec le signe
+d'origine (`4FAFFFFFFFFFFFFF` / `CFAFFFFFFFFFFFFF`). Les mots IBM saturés
+`7FFFFFFFFFFFFFFF` / `FFFFFFFFFFFFFFFF`, observés dans le corpus SAS 9.4 TS1M7,
+se relisent ainsi comme SAS et restent réécrivables dans la plage IBM.
+Écriture : normalisation hexadécimale exacte d'un f64 ;
 la plage normalisée va de 2^-260 inclus à 2^252 exclu. Hors plage et infinis :
 erreur. NaN et NULL numérique : `.`. Zéro négatif normalisé en zéro positif.
 Les octets supprimés d'un numérique court doivent être nuls, sinon erreur.
 
 Manquants : premier octet `.`, `_` ou `A`–`Z`, tous les autres nuls. Ils utilisent
-`MissingKind`, comme sas7bdat, donc le même futur sidecar Arrow. Un octet `A`
+`MissingKind`, comme sas7bdat, donc le même sidecar Arrow. Un octet `A`
 suivi d'une mantisse non nulle est un nombre, pas un manquant.
 
 ### Texte et temps
 
 UTF-8 strict par défaut, option explicite Latin1 (ISO-8859-1 véritable) ou
-Windows-1252. Aucun remplacement ni troncature silencieuse. La longueur est
+Windows-1252. La session SAS nommée LATIN1 du corpus écrit aussi `0x80` pour
+l’euro : utiliser explicitement Windows-1252 pour reproduire ce texte. Notre
+option Latin1 reste ISO-8859-1 et décode `0x80` en U+0080.
+Aucun remplacement ni troncature silencieuse. La longueur est
 mesurée en **octets encodés** ; les blancs finaux font partie du stockage et sont
 retirés uniquement sur demande. Vide et NULL caractère deviennent des blancs.
 
@@ -103,8 +112,8 @@ de formats existante.
 
 ## Suite de l'issue
 
-- Adaptateur Arrow : schéma, lots bornés, sidecars ; `uniformat_core::Format`.
-- Bindings Python/R et intégration CLI dans le dépôt consommateur.
+- Adaptateur Arrow, sidecars, registre, bindings Python/R et CLI : implémentés
+  dans le deuxième lot ; validation SAS v5 documentée séparément.
 - V8 : confirmer sur fixtures indépendantes les extensions NAMESTR (nom long),
   LABELV8/LABELV9, les limites et la sémantique du compteur OBSV8 avant activation.
 
