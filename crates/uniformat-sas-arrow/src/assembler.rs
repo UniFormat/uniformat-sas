@@ -5,24 +5,16 @@
 
 use std::sync::Arc;
 
-use arrow_array::builder::{
-    BinaryBuilder, Date32Builder, DurationMicrosecondBuilder, Float64Builder, StringBuilder,
-    Time64MicrosecondBuilder, TimestampMicrosecondBuilder, TimestampSecondBuilder, UInt8Builder,
-};
 use arrow_array::{ArrayRef, RecordBatch, RecordBatchOptions};
 use arrow_schema::{Field, Schema, SchemaRef};
-use uniformat_sas::temporal::{
-    sas_date_to_unix_days, sas_datetime_to_unix_micros, sas_time_to_micros, ConvertError,
-};
-use uniformat_sas::{
-    Column, DecoderState, MissingKind, NumValue, PageDecoder, PageHeader, ReadReport, RowRef,
-    TableMeta, TextPolicy, TextValue,
-};
+use uniformat_sas::{DecoderState, PageDecoder, PageHeader, ReadReport, TableMeta, TextPolicy};
 use uniformat_sas_io::PagePlan;
 
+use crate::column_append::append;
+use crate::column_builder::{Builder, OutColumn};
 use crate::error::{Error, Result};
-use crate::options::{OutOfRange, ReadOptions, TrailingBlanks};
-use crate::schema::{field_plans, FieldPlan, Repr};
+use crate::options::{ReadOptions, TrailingBlanks};
+use crate::schema::{field_plans, FieldPlan};
 
 /// Compteurs des écarts rencontrés pendant la lecture (jamais de modification silencieuse, ADR 0003).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -41,104 +33,6 @@ impl ReadStats {
         self.out_of_range = self.out_of_range.saturating_add(other.out_of_range);
         self.replaced_text = self.replaced_text.saturating_add(other.replaced_text);
         self.rows = self.rows.saturating_add(other.rows);
-    }
-}
-
-enum Builder {
-    Float64(Float64Builder),
-    Date32(Date32Builder),
-    TimestampMicro(TimestampMicrosecondBuilder),
-    TimestampSecond(TimestampSecondBuilder),
-    Time64Micro(Time64MicrosecondBuilder),
-    DurationMicro(DurationMicrosecondBuilder),
-    Utf8(StringBuilder),
-    Binary(BinaryBuilder),
-    Sidecar(UInt8Builder),
-}
-
-impl Builder {
-    fn new(repr: Repr, capacity: usize) -> Self {
-        match repr {
-            Repr::Float64 => Self::Float64(Float64Builder::with_capacity(capacity)),
-            Repr::Date32 => Self::Date32(Date32Builder::with_capacity(capacity)),
-            Repr::TimestampMicro => {
-                Self::TimestampMicro(TimestampMicrosecondBuilder::with_capacity(capacity))
-            }
-            Repr::TimestampSecond => {
-                Self::TimestampSecond(TimestampSecondBuilder::with_capacity(capacity))
-            }
-            Repr::Time64Micro => {
-                Self::Time64Micro(Time64MicrosecondBuilder::with_capacity(capacity))
-            }
-            Repr::DurationMicro => {
-                Self::DurationMicro(DurationMicrosecondBuilder::with_capacity(capacity))
-            }
-            Repr::Utf8 => Self::Utf8(StringBuilder::with_capacity(
-                capacity,
-                capacity.saturating_mul(8),
-            )),
-            Repr::Binary => Self::Binary(BinaryBuilder::with_capacity(
-                capacity,
-                capacity.saturating_mul(8),
-            )),
-            Repr::SidecarU8 => Self::Sidecar(UInt8Builder::with_capacity(capacity)),
-        }
-    }
-
-    fn finish(&mut self) -> ArrayRef {
-        match self {
-            Self::Float64(b) => Arc::new(b.finish()),
-            Self::Date32(b) => Arc::new(b.finish()),
-            Self::TimestampMicro(b) => Arc::new(b.finish()),
-            Self::TimestampSecond(b) => Arc::new(b.finish()),
-            Self::Time64Micro(b) => Arc::new(b.finish()),
-            Self::DurationMicro(b) => Arc::new(b.finish()),
-            Self::Utf8(b) => Arc::new(b.finish()),
-            Self::Binary(b) => Arc::new(b.finish()),
-            Self::Sidecar(b) => Arc::new(b.finish()),
-        }
-    }
-}
-
-/// Une colonne de sortie : la colonne SAS, son rôle et son constructeur.
-struct OutColumn {
-    source: usize,
-    builder: Builder,
-}
-
-/// Code de la colonne annexe (ADR 0003) : `0` présente, `1` `.`, `2` `._`, `3 + (lettre − 'A')`.
-fn sidecar_code(v: NumValue) -> u8 {
-    match v {
-        NumValue::Value(_) => 0,
-        NumValue::Missing(MissingKind::Dot) => 1,
-        NumValue::Missing(MissingKind::Underscore) => 2,
-        NumValue::Missing(MissingKind::Letter(c)) => 3u8.saturating_add(c.saturating_sub(b'A')),
-    }
-}
-
-/// Valeur d'une conversion temporelle : `Ok(Some)`, `Ok(None)` (nul compté) ou l'erreur à rendre.
-enum Converted<T> {
-    Value(T),
-    Null,
-}
-
-fn convert<T>(
-    r: std::result::Result<T, ConvertError>,
-    policy: OutOfRange,
-    stats: &mut ReadStats,
-    column: usize,
-    row: u64,
-    error: &mut Option<Error>,
-) -> Converted<T> {
-    match r {
-        Ok(v) => Converted::Value(v),
-        Err(_) => {
-            stats.out_of_range = stats.out_of_range.saturating_add(1);
-            if policy == OutOfRange::Error && error.is_none() {
-                *error = Some(Error::OutOfRange { column, row });
-            }
-            Converted::Null
-        }
     }
 }
 
@@ -402,129 +296,5 @@ impl BatchAssembler {
             &RecordBatchOptions::new().with_row_count(Some(rows)),
         )?;
         Ok(Some(batch))
-    }
-}
-
-/// Ajoute la valeur de `row` pour la colonne de sortie `c`.
-fn append(
-    c: &mut OutColumn,
-    col: &Column,
-    row: &RowRef<'_>,
-    opts: &ReadOptions,
-    policy: &TextPolicy,
-    stats: &mut ReadStats,
-    error: &mut Option<Error>,
-) {
-    let at = row.physical_index();
-    match &mut c.builder {
-        Builder::Sidecar(b) => b.append_value(sidecar_code(row.num(col))),
-        Builder::Float64(b) => match row.num(col) {
-            NumValue::Value(v) => b.append_value(v),
-            NumValue::Missing(_) => b.append_null(),
-        },
-        Builder::Date32(b) => match row.num(col) {
-            NumValue::Value(v) => match convert(
-                sas_date_to_unix_days(v),
-                opts.out_of_range,
-                stats,
-                col.index,
-                at,
-                error,
-            ) {
-                Converted::Value(d) => b.append_value(d),
-                Converted::Null => b.append_null(),
-            },
-            NumValue::Missing(_) => b.append_null(),
-        },
-        Builder::TimestampMicro(b) => match row.num(col) {
-            NumValue::Value(v) => match convert(
-                sas_datetime_to_unix_micros(v),
-                opts.out_of_range,
-                stats,
-                col.index,
-                at,
-                error,
-            ) {
-                Converted::Value(t) => b.append_value(t),
-                Converted::Null => b.append_null(),
-            },
-            NumValue::Missing(_) => b.append_null(),
-        },
-        Builder::TimestampSecond(b) => match row.num(col) {
-            NumValue::Value(v) => match convert(
-                sas_datetime_to_unix_micros(v),
-                opts.out_of_range,
-                stats,
-                col.index,
-                at,
-                error,
-            ) {
-                Converted::Value(t) => b.append_value(t.div_euclid(1_000_000)),
-                Converted::Null => b.append_null(),
-            },
-            NumValue::Missing(_) => b.append_null(),
-        },
-        Builder::Time64Micro(b) => match row.num(col) {
-            NumValue::Value(v) => {
-                // Time64 ne représente que 0 ≤ t < 86 400 s
-                let r = sas_time_to_micros(v).and_then(|t| {
-                    if (0..86_400_000_000).contains(&t) {
-                        Ok(t)
-                    } else {
-                        Err(ConvertError::OutOfRange)
-                    }
-                });
-                match convert(r, opts.out_of_range, stats, col.index, at, error) {
-                    Converted::Value(t) => b.append_value(t),
-                    Converted::Null => b.append_null(),
-                }
-            }
-            NumValue::Missing(_) => b.append_null(),
-        },
-        Builder::DurationMicro(b) => match row.num(col) {
-            NumValue::Value(v) => match convert(
-                sas_time_to_micros(v),
-                opts.out_of_range,
-                stats,
-                col.index,
-                at,
-                error,
-            ) {
-                Converted::Value(t) => b.append_value(t),
-                Converted::Null => b.append_null(),
-            },
-            NumValue::Missing(_) => b.append_null(),
-        },
-        Builder::Utf8(b) => match row.text_value(col, policy) {
-            Ok(TextValue::Text { value, replaced }) => {
-                if replaced {
-                    stats.replaced_text = stats.replaced_text.saturating_add(1);
-                }
-                if opts.empty_as_null && value.is_empty() {
-                    b.append_null();
-                } else {
-                    b.append_value(&value);
-                }
-            }
-            Ok(TextValue::Bytes(_)) => b.append_null(),
-            Err(e) => {
-                if error.is_none() {
-                    *error = Some(e.into());
-                }
-                b.append_null();
-            }
-        },
-        Builder::Binary(b) => {
-            let raw = if policy.trim_trailing {
-                row.char_bytes(col)
-            } else {
-                row.bytes(col)
-            };
-            if opts.empty_as_null && raw.is_empty() {
-                b.append_null();
-            } else {
-                b.append_value(raw);
-            }
-        }
     }
 }

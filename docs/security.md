@@ -57,3 +57,12 @@ c'est une ambiguïté du format, documentée dans `spec/xpt.md`. L'écrivain ref
 cette collision et les fins de table ambiguës. Une erreur rend l'écrivain
 inutilisable ; aucun commit d'un fichier partiel n'est possible.
 La cible `fuzz_xpt` couvre bibliothèque, descripteurs, index et cellules.
+
+L'adaptateur Arrow XPT borne simultanément les observations brutes et les buffers
+convertis par `max_batch_bytes`, ainsi que le nombre de colonnes projetées.
+L'inférence des largeurs d'écriture est limitée par `max_buffer_bytes` (256 Mio) ;
+avec des largeurs connues, les lots sont consommés en flux. Une erreur de
+conversion Arrow empoisonne aussi l'écrivain et interdit le commit. Les sidecars
+hors 0..28 sont refusés. Python borne la matérialisation par `max_table_bytes` et
+R par `max_bytes`. Les sorties binaires brutes sont explicites ; aucun remplacement
+silencieux d'octets invalides n'est autorisé en lecture texte XPT.

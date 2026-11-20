@@ -52,6 +52,7 @@ pub struct SasFormat;
 /// Registers the SAS format in `registry`.
 pub fn register(registry: &mut Registry) {
     registry.register(Arc::new(SasFormat));
+    registry.register(Arc::new(crate::xpt::XptFormat));
 }
 
 fn convert_error(e: crate::Error) -> Error {
@@ -107,6 +108,7 @@ pub fn read_options(options: &BTreeMap<String, String>) -> Result<ReadOptions> {
         options,
         &[
             "missing",
+            "missing_suffix",
             "dates",
             "trailing_blanks",
             "timestamp_unit",
@@ -125,6 +127,8 @@ pub fn read_options(options: &BTreeMap<String, String>) -> Result<ReadOptions> {
     let mut o = ReadOptions::default();
     for (k, v) in options {
         match k.as_str() {
+            "missing_suffix" if !v.is_empty() => o.missing_suffix.clone_from(v),
+            "missing_suffix" => return Err(Error::option(k, "expected a nonempty suffix")),
             "missing" => {
                 o.missing = choice(
                     k,
@@ -296,7 +300,10 @@ fn open(path: &Path, opts: &ReadOptions) -> Result<Arc<SasFile<FileSource>>> {
     Ok(Arc::new(file))
 }
 
-fn projection(schema: &SchemaRef, columns: Option<&Vec<String>>) -> Result<Option<Vec<usize>>> {
+pub(crate) fn projection(
+    schema: &SchemaRef,
+    columns: Option<&Vec<String>>,
+) -> Result<Option<Vec<usize>>> {
     let Some(cols) = columns else { return Ok(None) };
     cols.iter()
         .map(|c| {

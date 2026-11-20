@@ -17,3 +17,19 @@ ambigus. Les observations sont ensuite lues une par une avec une mémoire borné
 Conséquences : le premier lot est utilisable en Rust sans dépendance Arrow,
 conforme à la liste fermée des dépendances. Les adaptateurs et la v8 restent des
 jalons séparés de #1 ; une détection LIBV8 ne vaut pas une prise en charge v8.
+
+## Validation des décisions
+
+Le 18 novembre 2026, l'utilisateur a confirmé les sept décisions : v5 avant v8,
+UTF-8 par défaut avec Latin-1 et Windows-1252 explicites, NaN en manquant SAS,
+dates reproductibles, refus des fins ambiguës, transactions et ouverture du
+schéma sans données. La suite de #1 applique ces choix aux adaptateurs.
+
+## Validation SAS v5 — 19 novembre 2026
+
+Le corpus externe SAS 9.4 TS1M7 confirme les layouts, les 28 manquants et les
+cas de fin blanche sur 14 fichiers / 15 membres. La borne supérieure du décodage
+IBM a été ajustée pour reproduire SAS et rester réinscriptible ; les valeurs
+hors plage restent refusées en écriture. La session SAS nommée LATIN1 utilise
+l'octet euro de Windows-1252 : l'option ISO Latin-1 conserve son sens strict.
+Preuves, limites et procédure dans [le rapport](../xpt-sas-validation.md).

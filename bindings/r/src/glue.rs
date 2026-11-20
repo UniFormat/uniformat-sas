@@ -76,6 +76,10 @@ fn sas7bdat_read_native(
         Ok(t) => t,
         Err(e) => return failure(e.class(), e.to_string()),
     };
+    table_to_robj(table)
+}
+
+fn table_to_robj(table: crate::convert::RTable) -> Robj {
     let names: Vec<String> = table.columns.iter().map(|c| c.name.clone()).collect();
     let mut columns = Vec::with_capacity(table.columns.len());
     for c in table.columns {
@@ -123,37 +127,10 @@ fn sas7bdat_write_native(
     page_length: i32,
     on_unrepresentable: &str,
 ) -> Robj {
-    let mut cols = Vec::with_capacity(columns.len());
-    for (i, (_, value)) in columns.iter().enumerate() {
-        let data = if let Ok(d) = Doubles::try_from(value.clone()) {
-            RData::Real(d.iter().map(|x| x.0).collect())
-        } else if let Ok(s) = Strings::try_from(value.clone()) {
-            RData::Str(
-                s.iter()
-                    .map(|x| (!x.is_na()).then(|| x.as_ref().to_owned()))
-                    .collect(),
-            )
-        } else {
-            return failure(
-                "sas7bdat_usage_error",
-                format!("colonne {i} : type non pris en charge"),
-            );
-        };
-        let class = match classes.elt(i).as_ref() {
-            "date" => RClass::Date,
-            "datetime" => RClass::DateTime,
-            "time" => RClass::Time,
-            _ => RClass::Plain,
-        };
-        cols.push(RWriteColumn {
-            name: names.elt(i).as_ref().to_owned(),
-            data,
-            class,
-            label: opt_string(&labels, i),
-            format_sas: opt_string(&formats, i),
-            informat_sas: opt_string(&informats, i),
-        });
-    }
+    let cols = match write_columns(names, columns, classes, labels, formats, informats) {
+        Ok(cols) => cols,
+        Err(e) => return failure("sas7bdat_usage_error", e),
+    };
     let opts = RWriteOptions {
         compression: compression.to_owned(),
         encoding: encoding.to_owned(),
@@ -170,4 +147,131 @@ extendr_module! {
     mod uniformatsas;
     fn sas7bdat_read_native;
     fn sas7bdat_write_native;
+    fn xpt_read_native;
+    fn xpt_write_native;
+}
+
+fn write_columns(
+    names: Strings,
+    columns: List,
+    classes: Strings,
+    labels: Strings,
+    formats: Strings,
+    informats: Strings,
+) -> std::result::Result<Vec<RWriteColumn>, String> {
+    let mut cols = Vec::with_capacity(columns.len());
+    for (i, (_, value)) in columns.iter().enumerate() {
+        let data = if let Ok(d) = Doubles::try_from(value.clone()) {
+            RData::Real(d.iter().map(|x| x.0).collect())
+        } else if let Ok(s) = Strings::try_from(value.clone()) {
+            RData::Str(
+                s.iter()
+                    .map(|x| (!x.is_na()).then(|| x.as_ref().to_owned()))
+                    .collect(),
+            )
+        } else {
+            return Err(format!("colonne {i} : type non pris en charge"));
+        };
+        let class = match classes.elt(i).as_ref() {
+            "date" => RClass::Date,
+            "datetime" => RClass::DateTime,
+            "time" => RClass::Time,
+            _ => RClass::Plain,
+        };
+        cols.push(RWriteColumn {
+            name: names.elt(i).as_ref().to_owned(),
+            data,
+            class,
+            label: opt_string(&labels, i),
+            format_sas: opt_string(&formats, i),
+            informat_sas: opt_string(&informats, i),
+        });
+    }
+    Ok(cols)
+}
+
+/// Native XPORT reader with an explicit member and output budget.
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn xpt_read_native(
+    path: &str,
+    col_select: Robj,
+    n_max: f64,
+    encoding: &str,
+    trim_ws: bool,
+    max_bytes: f64,
+    member: Robj,
+) -> Robj {
+    if !max_bytes.is_finite()
+        || max_bytes < 1.0
+        || max_bytes >= usize::MAX as f64
+        || n_max.is_nan()
+        || n_max < 0.0
+    {
+        return failure("sas7bdat_usage_error", "invalid max_bytes or n_max".into());
+    }
+    let selection = if let Some(name) = member.as_str() {
+        crate::xpt::MemberSelection::Name(name.into())
+    } else if let Some(i) = member.as_real() {
+        if !i.is_finite() || i < 1.0 || i.fract() != 0.0 || i >= usize::MAX as f64 {
+            return failure(
+                "sas7bdat_usage_error",
+                "member must be a name or positive index".into(),
+            );
+        }
+        crate::xpt::MemberSelection::Index(i as usize - 1)
+    } else {
+        return failure("sas7bdat_usage_error", "invalid member".into());
+    };
+    let opts = RReadOptions {
+        col_select: col_select
+            .as_str_vector()
+            .map(|v| v.into_iter().map(str::to_owned).collect()),
+        n_max: n_max.is_finite().then_some(n_max as usize),
+        encoding: Some(encoding.into()),
+        trim_ws,
+        strict: true,
+        max_bytes: max_bytes as usize,
+    };
+    match crate::xpt::read_table(Path::new(path), &opts, &selection) {
+        Ok(table) => table_to_robj(table),
+        Err(e) => failure(e.class(), e.to_string()),
+    }
+}
+/// Native transactional XPORT writer.
+#[extendr]
+#[allow(clippy::too_many_arguments)]
+fn xpt_write_native(
+    path: &str,
+    names: Strings,
+    columns: List,
+    classes: Strings,
+    labels: Strings,
+    formats: Strings,
+    informats: Strings,
+    encoding: &str,
+    table_name: &str,
+    table_label: &str,
+    created: &str,
+    modified: &str,
+) -> Robj {
+    let cols = match write_columns(names, columns, classes, labels, formats, informats) {
+        Ok(cols) => cols,
+        Err(e) => return failure("sas7bdat_usage_error", e),
+    };
+    let encoding = match crate::xpt::encoding(encoding) {
+        Ok(e) => e,
+        Err(e) => return failure(e.class(), e.to_string()),
+    };
+    let opts = uniformat_sas::xpt::WriteOptions {
+        encoding,
+        table_name: table_name.into(),
+        table_label: table_label.into(),
+        created: created.into(),
+        modified: modified.into(),
+    };
+    match crate::xpt::write_table(Path::new(path), &cols, &opts) {
+        Ok(rows) => list!(ok = true, rows = rows as f64).into(),
+        Err(e) => failure(e.class(), e.to_string()),
+    }
 }

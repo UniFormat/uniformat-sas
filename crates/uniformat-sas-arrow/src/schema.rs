@@ -34,11 +34,9 @@ pub(crate) struct FieldPlan {
     pub(crate) repr: Repr,
 }
 
-fn repr_of(meta: &TableMeta, col: &Column, opts: &ReadOptions) -> Repr {
+fn repr_of(decodable: bool, col: &Column, opts: &ReadOptions) -> Repr {
     match col.kind {
         ColumnKind::Char { .. } => {
-            let decodable = opts.encoding_override.is_some()
-                || encoding_for_code(meta.header.encoding_code).is_some();
             if opts.invalid_bytes == InvalidBytes::Binary || !decodable {
                 Repr::Binary
             } else {
@@ -101,6 +99,8 @@ fn field_metadata(col: &Column, sidecar: Option<&str>) -> HashMap<String, String
     }
     if let Some(f) = &col.informat {
         m.insert("sas.informat".to_owned(), f.name.clone());
+        m.insert("sas.informat_width".to_owned(), f.width.to_string());
+        m.insert("sas.informat_decimals".to_owned(), f.decimals.to_string());
     }
     m.insert("sas.length".to_owned(), col.width().to_string());
     m.insert(
@@ -124,9 +124,19 @@ fn field_metadata(col: &Column, sidecar: Option<&str>) -> HashMap<String, String
 
 /// Tous les champs du schéma complet (colonnes annexes comprises), dans l'ordre.
 pub(crate) fn field_plans(meta: &TableMeta, opts: &ReadOptions) -> Vec<FieldPlan> {
-    let mut out = Vec::with_capacity(meta.columns.len());
-    for (i, col) in meta.columns.iter().enumerate() {
-        let repr = repr_of(meta, col, opts);
+    let decodable =
+        opts.encoding_override.is_some() || encoding_for_code(meta.header.encoding_code).is_some();
+    column_plans(&meta.columns, decodable, opts)
+}
+
+pub(crate) fn column_plans(
+    columns: &[Column],
+    decodable: bool,
+    opts: &ReadOptions,
+) -> Vec<FieldPlan> {
+    let mut out = Vec::with_capacity(columns.len());
+    for (i, col) in columns.iter().enumerate() {
+        let repr = repr_of(decodable, col, opts);
         let sidecar_name = (opts.missing == MissingMode::Sidecar && col.kind.is_numeric())
             .then(|| format!("{}{}", col.name, opts.missing_suffix));
         let nullable = !matches!(repr, Repr::Utf8 | Repr::Binary) || opts.empty_as_null;

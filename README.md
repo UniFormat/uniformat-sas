@@ -37,7 +37,7 @@ sas.write_sas("copy.sas7bdat", tbl, compression="binary")
 uniformat convert data.sas7bdat copy.sas7bdat --write-opt compression=char   # uniformat-cli
 ```
 
-## XPORT v5 — Rust foundation (issue #1)
+## XPORT v5 (issue #1)
 
 The first XPORT development milestone provides `uniformat_sas::xpt` (IBM numbers,
 NAMESTR metadata, row codec) and `uniformat_sas_io::{XptFile, XptWriter}`. The writer
@@ -68,10 +68,36 @@ See the [specification](docs/spec/xpt.md), [ADR](docs/adr/0008-xport.md) and
 Trailing all-blank short rows and literal member-marker pairs are ambiguous in
 XPORT: writes that cannot round-trip are rejected. Listing members scans the file.
 
-**Still pending in #1:** Arrow batches/sidecars, `uniformat_core::Format`, CLI,
-Python/R APIs, benchmarks, and v8 long names/labels. LIBV8 is detected and returns
-an explicit unsupported error. Existing Python/R/CLI examples above remain for
-sas7bdat only.
+The Arrow adapter now exposes `XptBatchReader`, `XptArrowWriter`, `xpt_schema`
+and `write_xpt_batches` in `uniformat_sas_arrow::xpt`. `register()` adds both
+`sas7bdat` and `xpt`, so the CLI recognizes `.xpt` automatically:
+
+```sh
+uniformat convert study.xpt copy.sas7bdat --read-opt missing=sidecar
+uniformat convert copy.sas7bdat study-copy.xpt --read-opt missing=sidecar
+```
+
+```python
+from uniformat_io.sas import read_xpt_table, write_xpt
+study = read_xpt_table("study.xpt", missing="sidecar")
+write_xpt("copy.xpt", study)
+```
+
+R exports `read_xpt()` / `write_xpt()` with haven-compatible tagged NA.
+Text widths are inferred within a 256 MiB buffer budget; known widths permit
+streaming writes. Python table reads have a separate 256 MiB retained-buffer
+budget. Numeric, boolean and integer values map to SAS numbers; native temporal
+types carry SAS formats. Keep sidecars when converting special missing values.
+
+SAS-produced v5 references have now been validated: 14 files, 15 members,
+116 observations, all 28 missing codes, and exact round trips through Arrow.
+The [validation report](docs/xpt-sas-validation.md) documents the IBM upper-bound
+fix and the explicit Windows-1252 option needed for the observed SAS LATIN1
+Euro byte. Licensed reference files remain outside git.
+
+A reproducible throughput probe is available with
+`cargo run --release -p uniformat-sas-arrow --example xpt_benchmark -- 100000`.
+**Still pending in #1:** v8 long names/labels; LIBV8 remains explicitly unsupported.
 
 ## Development
 
