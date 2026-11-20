@@ -283,10 +283,7 @@ fn descriptors_reject_hostile_fields_and_accept_135_byte_variant() {
     let mut v8 = e.header().to_vec();
     v8[20..28].copy_from_slice(b"LIBV8   ");
     assert_eq!(detect_version(&v8).unwrap(), Version::V8);
-    assert!(matches!(
-        parse_library(&v8),
-        Err(uniformat_sas::Error::UnsupportedFormat { .. })
-    ));
+    assert_eq!(parse_library(&v8).unwrap(), Version::V8);
     for n in 0..640 {
         assert!(parse_library(&e.header()[..n]).is_err() || n >= 240);
     }

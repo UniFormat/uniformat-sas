@@ -66,3 +66,18 @@ conversion Arrow empoisonne aussi l'écrivain et interdit le commit. Les sidecar
 hors 0..28 sont refusés. Python borne la matérialisation par `max_table_bytes` et
 R par `max_bytes`. Les sorties binaires brutes sont explicites ; aucun remplacement
 silencieux d'octets invalides n'est autorisé en lecture texte XPT.
+
+## XPORT v8
+
+Les limites v8 sont 32767 colonnes/cellule caractère, 32 octets par nom et
+256 octets par label de variable, toujours réduites par `Limits`. Chaque entrée
+LABELV8/LABELV9 est bornée avant sa lecture : ordinal, longueurs, unicité et
+cohérence avec NAMESTR sont vérifiés, puis le budget cumulé des extensions.
+Le nom et le label complets sont décodés, pas leurs préfixes historiques coupés.
+
+Un compteur OBSV8 positif est multiplié par la largeur avec contrôle de
+débordement ; la plage, le padding et la frontière du membre suivant sont validés.
+Le compteur ne provoque aucune allocation proportionnelle au nombre de lignes.
+Sans compteur, le scanner et les refus d'ambiguïtés v5 restent actifs. Toute
+discordance entre `row_count` et les lignes écrites interdit le commit atomique.
+La cible `fuzz_xpt` passe aussi par les extensions v8 via `XptFile`.

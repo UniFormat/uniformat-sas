@@ -46,7 +46,10 @@ pub(super) fn from_plans(meta: &Metadata, plans: &[FieldPlan]) -> SchemaRef {
     let mut md = HashMap::new();
     md.insert("sas.table_name".into(), meta.header().name.clone());
     md.insert("sas.table_label".into(), meta.header().label.clone());
-    md.insert("xpt.version".into(), "5".into());
+    md.insert(
+        "xpt.version".into(),
+        meta.header().version.number().to_string(),
+    );
     md.insert("xpt.created".into(), meta.header().created.clone());
     md.insert("xpt.modified".into(), meta.header().modified.clone());
     Arc::new(Schema::new_with_metadata(

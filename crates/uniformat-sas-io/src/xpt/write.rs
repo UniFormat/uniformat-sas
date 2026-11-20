@@ -59,7 +59,12 @@ impl<W: Write> XptWriter<W> {
             .rows
             .checked_add(1)
             .ok_or_else(|| invalid("XPT row count overflow"))?;
-        self.check_marker_collision(&row)?;
+        if self.encoder.expected_rows().is_some_and(|n| rows > n) {
+            return Err(invalid("XPT row count exceeds promised count"));
+        }
+        if self.encoder.expected_rows().is_none() {
+            self.check_marker_collision(&row)?;
+        }
         self.sink.write_all(&row)?;
         self.remainder = (self.remainder + row.len() % 80) % 80;
         self.last_blank = row.iter().all(|&b| b == b' ');
@@ -94,12 +99,17 @@ impl<W: Write> XptWriter<W> {
         }
         let pad = (80 - self.remainder) % 80;
         let width = self.encoder.metadata().row_length() as usize;
-        if self.last_blank && width + pad < 80 {
+        if self.encoder.expected_rows().is_some_and(|n| n != self.rows) {
+            return Err(invalid("XPT row count differs from promised count"));
+        }
+        if self.encoder.expected_rows().is_none() && self.last_blank && width + pad < 80 {
             return Err(invalid(
                 "XPT final blank observation is indistinguishable from padding",
             ));
         }
-        self.check_marker_collision(&[b' '; 80][..pad])?;
+        if self.encoder.expected_rows().is_none() {
+            self.check_marker_collision(&[b' '; 80][..pad])?;
+        }
         self.sink.write_all(&[b' '; 80][..pad])?;
         self.sink.flush()?;
         Ok((self.sink, self.rows))

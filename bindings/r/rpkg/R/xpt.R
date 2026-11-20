@@ -1,4 +1,4 @@
-#' Read SAS Transport v5
+#' Read SAS Transport v5/v8
 #' @param path Path to the XPT file.
 #' @param col_select Column names to retain.
 #' @param n_max Maximum observations, Inf for all.
@@ -23,17 +23,19 @@ read_xpt <- function(path, col_select=NULL, n_max=Inf, encoding="UTF-8", trim_ws
   df
 }
 
-#' Write SAS Transport v5 atomically
+#' Write SAS Transport v5/v8 atomically
 #' @param data A data.frame with numeric, character, Date, POSIXct or hms columns.
 #' @param path Output file.
 #' @param encoding UTF-8, latin1 or windows-1252.
-#' @param table_name Dataset name, at most 8 ASCII bytes.
+#' @param table_name Dataset name, at most 8 ASCII bytes in v5 or 32 in v8.
 #' @param table_label Dataset label, at most 40 encoded bytes.
+#' @param version Transport version, 5 (default) or 8.
 #' @param created,modified Deterministic header dates, ddMMMyy:hh:mm:ss.
 #' @return path, invisibly. Invalid widths or unrepresentable values cause an error.
 #' @export
 write_xpt <- function(data, path, encoding="UTF-8", table_name=NULL, table_label=NULL,
-                      created=NULL, modified=NULL) {
+                      created=NULL, modified=NULL, version=5L) {
+  stopifnot(length(version)==1L, !is.na(version), version %in% c(5,8))
   stopifnot(is.data.frame(data), ncol(data)>0L, is.character(path), length(path)==1L, !is.na(path))
   fallback <- function(explicit, attribute, default) {
     if (!is.null(explicit)) return(explicit)
@@ -45,7 +47,7 @@ write_xpt <- function(data, path, encoding="UTF-8", table_name=NULL, table_label
                p$labels, p$formats, p$informats, encoding,
                fallback(table_name,"xpt.name","DATASET"), fallback(table_label,"label",""),
                fallback(created,"xpt.created","01JAN00:00:00:00"),
-               fallback(modified,"xpt.modified","01JAN00:00:00:00"))
+               fallback(modified,"xpt.modified","01JAN00:00:00:00"), as.integer(version))
   if (!isTRUE(res$ok)) sas7bdat_stop(res$class,res$message)
   invisible(path)
 }

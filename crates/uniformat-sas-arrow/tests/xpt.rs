@@ -269,6 +269,86 @@ fn registry_conversion_sas7bdat_xpt_sas7bdat_preserves_values() {
     let b = decode(std::fs::read(dst).unwrap(), Default::default());
     assert_eq!(a.columns(), b.columns());
 }
+
+#[test]
+fn registry_v8_options_preserve_long_names_through_sas7bdat() {
+    use uniformat_core::{convert, ReadRequest, Registry, WriteRequest};
+    let dir = tempdir().unwrap();
+    let src = dir.path().join("long.xpt");
+    let sas = dir.path().join("long.sas7bdat");
+    let dst = dir.path().join("back.xpt");
+    let b = RecordBatch::try_from_iter(vec![
+        (
+            "long_numeric_name",
+            Arc::new(Float64Array::from(vec![1.25, -2.5])) as ArrayRef,
+        ),
+        (
+            "long_character_name",
+            Arc::new(StringArray::from(vec!["x".repeat(250), "été".into()])) as ArrayRef,
+        ),
+    ])
+    .unwrap();
+    let request = WriteRequest {
+        options: [("version".into(), "8".into())].into(),
+    };
+    let opts = uniformat_sas_arrow::xpt::write_options(&request.options).unwrap();
+    write_xpt_batches(&src, b.schema(), [Ok(b.clone())], opts).unwrap();
+    let mut registry = Registry::new();
+    uniformat_sas_arrow::register(&mut registry);
+    convert(
+        &registry,
+        &src,
+        &sas,
+        None,
+        None,
+        &ReadRequest::default(),
+        &WriteRequest::default(),
+    )
+    .unwrap();
+    assert!(convert(
+        &registry,
+        &sas,
+        &dst,
+        None,
+        None,
+        &ReadRequest::default(),
+        &WriteRequest::default()
+    )
+    .is_err());
+    assert!(!dst.exists());
+    assert_eq!(
+        convert(
+            &registry,
+            &sas,
+            &dst,
+            None,
+            None,
+            &ReadRequest::default(),
+            &request
+        )
+        .unwrap()
+        .rows,
+        2
+    );
+    let info = registry
+        .by_name("xpt")
+        .unwrap()
+        .info(&dst, &ReadRequest::default())
+        .unwrap();
+    assert_eq!(info.schema.metadata()["xpt.version"], "8");
+    let mut opts = XptReadOptions::default();
+    opts.read.batch_rows = 1;
+    let reader = XptBatchReader::new(
+        XptFile::open(std::fs::read(dst).unwrap(), Default::default()).unwrap(),
+        opts,
+        None,
+        None,
+    )
+    .unwrap();
+    let batches = reader.collect::<Result<Vec<_>, _>>().unwrap();
+    let back = arrow_select::concat::concat_batches(&batches[0].schema(), &batches).unwrap();
+    assert_eq!(back.columns(), b.columns());
+}
 #[test]
 fn metadata_schema_does_not_need_observations() {
     let data = include_bytes!("../../../tests/data/xpt/v5-synthetic.xpt");

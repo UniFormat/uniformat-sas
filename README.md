@@ -37,7 +37,7 @@ sas.write_sas("copy.sas7bdat", tbl, compression="binary")
 uniformat convert data.sas7bdat copy.sas7bdat --write-opt compression=char   # uniformat-cli
 ```
 
-## XPORT v5 (issue #1)
+## XPORT v5/v8 (issue #1)
 
 The first XPORT development milestone provides `uniformat_sas::xpt` (IBM numbers,
 NAMESTR metadata, row codec) and `uniformat_sas_io::{XptFile, XptWriter}`. The writer
@@ -65,8 +65,9 @@ for member in &members {
 
 See the [specification](docs/spec/xpt.md), [ADR](docs/adr/0008-xport.md) and
 [synthetic fixture / interoperability instructions](tests/data/xpt/README.md).
-Trailing all-blank short rows and literal member-marker pairs are ambiguous in
-XPORT: writes that cannot round-trip are rejected. Listing members scans the file.
+Without a positive v8 observation count, trailing all-blank short rows and literal
+member-marker pairs are ambiguous: writes that cannot round-trip are rejected.
+Listing members scans uncounted data; counted v8 members use checked extents.
 
 The Arrow adapter now exposes `XptBatchReader`, `XptArrowWriter`, `xpt_schema`
 and `write_xpt_batches` in `uniformat_sas_arrow::xpt`. `register()` adds both
@@ -97,7 +98,18 @@ Euro byte. Licensed reference files remain outside git.
 
 A reproducible throughput probe is available with
 `cargo run --release -p uniformat-sas-arrow --example xpt_benchmark -- 100000`.
-**Still pending in #1:** v8 long names/labels; LIBV8 remains explicitly unsupported.
+XPORT v8 is detected automatically on input. To write it, use `version=8` in
+Python/R, `WriteOptions { version: Version::V8, ..Default::default() }` in Rust,
+or `--write-opt version=8` in the CLI. V5 remains the default; long metadata is
+never silently truncated or promoted. V8 supports 32-byte variable/dataset names,
+256-byte variable labels, long formats/informats and 32767-byte character cells.
+Dataset labels remain limited to 40 bytes. See the [v8 specification](docs/spec/xpt-v8.md).
+
+Materialized Python tables and R data frames declare their row count in v8.
+For Rust or Python streams, supply `row_count` to preserve trailing blank rows;
+the writer checks this exact count before commit. Without it, streaming remains
+bounded and follows the legacy ambiguity policy. Independent ReadStat/haven tests
+cover v8; a new execution in SAS v8 has not been performed.
 
 ## Development
 
