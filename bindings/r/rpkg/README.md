@@ -19,7 +19,7 @@ Rscript -e 'testthat::test_dir("crates/uniformat-sas-r/rpkg/tests/testthat", pac
 
 Paquet **non publié** (décision NULL en attente, ADR 0007) .
 
-## XPORT v5
+## XPORT v5/v8
 
 ```r
 study <- read_xpt("study.xpt", encoding = "UTF-8", member = 1)
@@ -33,3 +33,9 @@ explicites. Les NA étiquetés de haven conservent `._` et `.A` à `.Z`.
 L'écriture est atomique et les dates d'en-tête déterministes ; noms, labels et
 valeurs dépassant les limites v5 provoquent une erreur. Les tests `test-xpt.R`
 comparent aussi les fichiers à `haven::read_xpt` et `haven::write_xpt(version=5)`.
+
+V8 est détectée en lecture. `write_xpt(study, "copy.xpt", version=8)` active les
+noms de 32 octets, labels de variables de 256 octets et cellules caractère de
+32767 octets. Le label du dataset reste limité à 40 octets. Le nombre exact de
+lignes du data.frame est inscrit pour préserver les lignes finales blanches.
+V5 reste le défaut ; les tests haven couvrent désormais les deux versions.

@@ -1,4 +1,4 @@
-use super::XptRows;
+use super::{metadata::metadata, XptRows};
 use crate::{ByteSource, IoError, Result};
 use uniformat_sas::xpt::{self, Metadata, TextEncoding};
 use uniformat_sas::Limits;
@@ -39,7 +39,7 @@ impl Member {
     pub fn metadata(&self) -> &Metadata {
         &self.meta
     }
-    /// Count inferred using the documented largest-padding policy.
+    /// Declared v8 count, or count inferred using the largest-padding policy.
     pub fn row_count(&self) -> u64 {
         self.row_count
     }
@@ -56,6 +56,7 @@ pub struct XptFile<S: ByteSource> {
     options: XptOpenOptions,
     first: Metadata,
     first_data: u64,
+    version: xpt::Version,
 }
 impl<S: ByteSource> XptFile<S> {
     /// Validate library and first member headers. The source must contain whole 80-byte records.
@@ -63,13 +64,14 @@ impl<S: ByteSource> XptFile<S> {
         if !source.len().is_multiple_of(80) || options.max_members == 0 {
             return Err(invalid("XPT file length or max_members"));
         }
-        xpt::parse_library(&source.read_range(0, 240)?)?;
-        let (first, first_data) = metadata(&source, 240, &options)?;
+        let version = xpt::parse_library(&source.read_range(0, 240)?)?;
+        let (first, first_data) = metadata(&source, 240, &options, version)?;
         Ok(Self {
             source,
             options,
             first,
             first_data,
+            version,
         })
     }
     /// First member's schema, available without scanning its observations.
@@ -92,16 +94,21 @@ impl<S: ByteSource> XptFile<S> {
                 return Err(invalid("XPT member count budget"));
             }
             retained = retained
-                .checked_add(meta.columns().len().saturating_mul(140))
+                .checked_add(meta.metadata_bytes())
                 .filter(|&n| n <= self.options.limits.max_text_bytes)
                 .ok_or_else(|| invalid("XPT cumulative metadata budget"))?;
-            let end = self.find_member_end(start)?;
-            let size = end
-                .checked_sub(start)
-                .ok_or_else(|| invalid("XPT data extent"))?;
-            let tail_len = size.min(79) as usize;
-            let tail = self.source.read_range(end - tail_len as u64, tail_len)?;
-            let row_count = xpt::observation_count(size, meta.row_length(), &tail)?;
+            let (end, row_count) = match meta.declared_row_count() {
+                Some(count) => (self.counted_end(start, meta.row_length(), count)?, count),
+                None => {
+                    let end = self.find_member_end(start)?;
+                    let size = end
+                        .checked_sub(start)
+                        .ok_or_else(|| invalid("XPT data extent"))?;
+                    let tail_len = size.min(79) as usize;
+                    let tail = self.source.read_range(end - tail_len as u64, tail_len)?;
+                    (end, xpt::observation_count(size, meta.row_length(), &tail)?)
+                }
+            };
             out.push(Member {
                 meta,
                 data_offset: start,
@@ -110,12 +117,37 @@ impl<S: ByteSource> XptFile<S> {
             if end == self.source.len() {
                 return Ok(out);
             }
-            (meta, start) = metadata(&self.source, end, &self.options)?;
+            (meta, start) = metadata(&self.source, end, &self.options, self.version)?;
         }
     }
     /// Stream encoded observations of an indexed member; at most one row allocated per item.
     pub fn rows<'a>(&'a self, member: &'a Member) -> XptRows<'a, S> {
         XptRows::new(&self.source, member)
+    }
+    fn counted_end(&self, start: u64, width: u32, count: u64) -> Result<u64> {
+        let size = count
+            .checked_mul(u64::from(width))
+            .ok_or_else(|| invalid("XPT declared extent overflow"))?;
+        let raw_end = start
+            .checked_add(size)
+            .ok_or_else(|| invalid("XPT declared extent overflow"))?;
+        let pad = ((80 - size % 80) % 80) as usize;
+        let end = raw_end
+            .checked_add(pad as u64)
+            .filter(|&v| v <= self.source.len())
+            .ok_or_else(|| invalid("XPT declared observations exceed file length"))?;
+        if self
+            .source
+            .read_range(raw_end, pad)?
+            .iter()
+            .any(|&b| b != b' ')
+        {
+            return Err(invalid("XPT non-space padding after declared observations"));
+        }
+        if end < self.source.len() && !xpt::is_member_boundary(&self.source.read_range(end, 160)?) {
+            return Err(invalid("XPT data after declared observation count"));
+        }
+        Ok(end)
     }
     fn find_member_end(&self, mut at: u64) -> Result<u64> {
         // 800 records plus one lookahead record: catches a marker across a read boundary.
@@ -136,40 +168,4 @@ impl<S: ByteSource> XptFile<S> {
         }
         Ok(self.source.len())
     }
-}
-
-fn metadata<S: ByteSource>(
-    source: &S,
-    offset: u64,
-    opts: &XptOpenOptions,
-) -> Result<(Metadata, u64)> {
-    let h = xpt::parse_member(
-        &source.read_range(offset, 400)?,
-        opts.encoding,
-        &opts.limits,
-    )?;
-    let size = h
-        .variables
-        .checked_mul(h.descriptor_size)
-        .ok_or_else(|| invalid("XPT descriptor size"))?;
-    let size = size
-        .checked_add(xpt::padding(size))
-        .ok_or_else(|| invalid("XPT descriptor padding"))?;
-    let start = offset
-        .checked_add(400)
-        .ok_or_else(|| invalid("XPT metadata offset"))?;
-    let obs = start
-        .checked_add(size as u64)
-        .ok_or_else(|| invalid("XPT OBS offset"))?;
-    let meta = Metadata::parse(
-        h,
-        &source.read_range(start, size)?,
-        opts.encoding,
-        &opts.limits,
-    )?;
-    xpt::parse_observation_header(&source.read_range(obs, 80)?)?;
-    let data = obs
-        .checked_add(80)
-        .ok_or_else(|| invalid("XPT data offset"))?;
-    Ok((meta, data))
 }

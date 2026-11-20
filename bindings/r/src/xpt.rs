@@ -163,11 +163,14 @@ pub fn read_table(
             ("xpt.name".into(), meta.header().name.clone()),
             ("xpt.created".into(), meta.header().created.clone()),
             ("xpt.modified".into(), meta.header().modified.clone()),
-            ("xpt.version".into(), "5".into()),
+            (
+                "xpt.version".into(),
+                meta.header().version.number().to_string(),
+            ),
         ],
     })
 }
-/// Write deterministic XPORT v5 atomically; preserve haven tagged NA.
+/// Write deterministic XPORT atomically; preserve haven tagged NA.
 pub fn write_table(
     path: &Path,
     columns: &[RWriteColumn],
@@ -188,8 +191,12 @@ pub fn write_table(
     }) {
         return Err(RError::Usage("XPT columns have different lengths".into()));
     }
+    let mut opts = opts.clone();
+    if opts.version == uniformat_sas::xpt::Version::V8 && opts.row_count.is_none() {
+        opts.row_count = Some(rows as u64);
+    }
     let schema = write_schema(columns, enc);
-    let mut writer = XptWriter::create(path, &schema, opts, &Limits::default()).map_err(io)?;
+    let mut writer = XptWriter::create(path, &schema, &opts, &Limits::default()).map_err(io)?;
     for i in 0..rows {
         let cells = columns
             .iter()

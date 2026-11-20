@@ -254,6 +254,7 @@ fn xpt_write_native(
     table_label: &str,
     created: &str,
     modified: &str,
+    version: i32,
 ) -> Robj {
     let cols = match write_columns(names, columns, classes, labels, formats, informats) {
         Ok(cols) => cols,
@@ -263,7 +264,14 @@ fn xpt_write_native(
         Ok(e) => e,
         Err(e) => return failure(e.class(), e.to_string()),
     };
+    let version = match version {
+        5 => uniformat_sas::xpt::Version::V5,
+        8 => uniformat_sas::xpt::Version::V8,
+        _ => return failure("sas7bdat_usage_error", "version must be 5 or 8".into()),
+    };
     let opts = uniformat_sas::xpt::WriteOptions {
+        version,
+        row_count: None,
         encoding,
         table_name: table_name.into(),
         table_label: table_label.into(),

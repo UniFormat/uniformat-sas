@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, path::Path, sync::Arc};
 use uniformat_core::{
     BatchStream, Error, Format, ReadRequest, Result, TableInfo, WriteRequest, WriteSummary,
 };
-use uniformat_sas::xpt::TextEncoding;
+use uniformat_sas::xpt::{TextEncoding, Version};
 use uniformat_sas_io::{FileSource, XptFile};
 
 fn error(e: crate::Error) -> Error {
@@ -59,7 +59,7 @@ pub fn read_options(options: &BTreeMap<String, String>) -> Result<XptReadOptions
     opts.read = crate::read_options(&common)?;
     Ok(opts)
 }
-/// Parse deterministic XPORT v5 write options. Unsupported options are rejected.
+/// Parse deterministic XPORT write options (v5 default; v8 explicit). Unsupported options are rejected.
 pub fn write_options(options: &BTreeMap<String, String>) -> Result<XptWriteOptions> {
     let mut opts = XptWriteOptions::default();
     for (k, v) in options {
@@ -77,11 +77,18 @@ pub fn write_options(options: &BTreeMap<String, String>) -> Result<XptWriteOptio
                     .filter(|&n| n > 0)
                     .ok_or_else(|| Error::option(k, "expected a positive byte budget"))?
             }
-            "version" if v == "5" => {}
+            "version" if v == "5" => opts.write.version = Version::V5,
+            "version" if v == "8" => opts.write.version = Version::V8,
+            "row_count" => {
+                opts.write.row_count =
+                    Some(v.parse().map_err(|_| {
+                        Error::option(k, "expected a nonnegative observation count")
+                    })?)
+            }
             _ => {
                 return Err(Error::option(
                     k,
-                    "unknown or unsupported option for XPORT v5",
+                    "unknown or unsupported option for XPORT (version must be 5 or 8)",
                 ))
             }
         }

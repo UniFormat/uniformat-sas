@@ -1,21 +1,29 @@
-//! SAS Transport v5, buffers only. See `docs/spec/xpt.md` and ADR 0008.
+//! SAS Transport v5/v8, buffers only. See `docs/spec/xpt*.md` and ADRs 0008/0010.
 mod date;
 mod float;
+mod formats;
 mod header;
+mod labels;
+mod metadata;
 mod namestr;
 mod row;
 mod text;
+mod version;
 mod write;
+mod write_labels;
 mod write_schema;
 
 pub use float::{decode_number, encode_number};
 pub use header::{
     detect_version, is_member_boundary, parse_library, parse_member, parse_observation_header,
-    MemberHeader, Metadata, Version,
+    MemberHeader,
 };
+pub use labels::LabelHeader;
+pub use metadata::Metadata;
 pub use namestr::parse_namestrs;
 pub use row::Row;
 pub use text::TextEncoding;
+pub use version::Version;
 pub use write::{Encoder, WriteOptions};
 
 use crate::{Error, Result};
