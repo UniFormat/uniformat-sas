@@ -6,7 +6,7 @@ v8 explicite après fusion de #3. La [spécification](spec/xpt-v8.md) et
 
 ## Vérifications locales
 
-- Suite Rust : 123 tests réussis, 30 tests optionnels ignorés.
+- Suite Rust : 124 tests réussis, 30 tests optionnels ignorés.
 - Python 3.9 / PyArrow 21 : 26 tests réussis, 13 optionnels ignorés. Le corpus
   externe SAS v5 est activé : ses 14 fichiers, 15 membres et 116 observations
   sont revalidés, y compris les allers-retours et les 28 codes de manquants.
@@ -37,6 +37,10 @@ Certaines versions anciennes de l'écrivain ReadStat mélangent des préfixes de
 6 et 10 octets dans une même section LABELV9. Les références indépendantes évitent
 ce défaut du producteur ; notre sortie mixte utilise uniformément 10 octets et
 est relue par ReadStat. Le lecteur refuse les entrées incohérentes.
+
+La compatibilité inclut les en-têtes à deux champs de 15 positions utilisés
+par haven 2.5.5 : compteur à droite puis champ réservé nul. Un test synthétique
+obligatoire vérifie LABELV8, LABELV9 et OBSV8 ainsi que le rejet d'un réservé non nul.
 
 Les trois fixtures `tests/data/xpt/v8-*.xpt` proviennent exclusivement du générateur
 Rust du dépôt ; leur procédure de régénération est dans le README de ce dossier.

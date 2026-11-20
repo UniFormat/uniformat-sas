@@ -51,6 +51,13 @@ excessive, un format incohérent ou un padding non blanc sont des erreurs. Le
 budget cumulé couvre NAMESTR, extensions et métadonnées de tous les membres.
 Les formats étendus sont réanalysés avant classification DATE/TIME/DATETIME.
 
+Compatibilité haven 2.5.5 / ancien ReadStat : les en-têtes LABELV8/LABELV9 et
+OBSV8 peuvent utiliser **deux champs décimaux de 15 positions**, le premier
+justifié à droite contenant le compteur, le second nul. Cette variante est
+acceptée en lecture ; une valeur réservée non nulle est refusée. L'écrivain
+continue à produire les en-têtes canoniques décrits ci-dessus. Variante vérifiée
+dans `tidyverse/haven` tag `v2.5.5`, `src/readstat/sas/readstat_xport_write.c`.
+
 ## Compteur et observations
 
 OBSV8 peut contenir un entier décimal positif justifié à droite dans [48,63),

@@ -137,11 +137,9 @@ pub(super) fn observation_header(input: &[u8], version: Version) -> Result<Optio
         return Ok(None);
     }
     check_marker(input, "OBSV8")?;
-    // Older producers use the 30-zero v5 suffix. It denotes an unknown count.
-    if bytes(input, 48, 30)? == [b'0'; 30] && bytes(input, 78, 2)? == b"  " {
-        return Ok(None);
-    }
-    if bytes(input, 63, 17)?.iter().any(|&b| b != b' ') {
+    // haven 2.5.5 writes two right-aligned 15-byte integers; the second is zero.
+    // The old 30-zero suffix also parses as an unknown count and a zero reserve.
+    if !zero_reserved(bytes(input, 63, 15)?) || bytes(input, 78, 2)? != b"  " {
         return Err(invalid("XPT OBSV8 suffix"));
     }
     let count = std::str::from_utf8(bytes(input, 48, 15)?)
@@ -157,4 +155,8 @@ pub(super) fn observation_header(input: &[u8], version: Version) -> Result<Optio
         .parse()
         .map_err(|_| invalid("XPT OBSV8 count overflow"))?;
     Ok((n > 0).then_some(n))
+}
+
+pub(super) fn zero_reserved(input: &[u8]) -> bool {
+    std::str::from_utf8(input).is_ok_and(|s| s.trim_matches(' ').bytes().all(|b| b == b'0'))
 }

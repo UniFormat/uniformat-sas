@@ -16,11 +16,19 @@ impl LabelHeader {
         if !extended && check_marker(input, "LABELV8").is_err() {
             return Ok(None);
         }
-        let field = std::str::from_utf8(bytes(input, 48, 5)?)
+        // Older ReadStat/haven puts the count in 15 columns rather than five.
+        let legacy = bytes(input, 48, 5)?.iter().all(|&b| b == b' ');
+        let width = if legacy { 15 } else { 5 };
+        let field = std::str::from_utf8(bytes(input, 48, width)?)
             .map_err(|_| invalid("XPT label count"))?
             .trim_matches(' ');
         let count = decimal(field.as_bytes())?;
-        if count == 0 || count > variables || bytes(input, 53, 27)?.iter().any(|&b| b != b' ') {
+        let suffix_valid = if legacy {
+            super::header::zero_reserved(bytes(input, 63, 15)?) && bytes(input, 78, 2)? == b"  "
+        } else {
+            bytes(input, 53, 27)?.iter().all(|&b| b == b' ')
+        };
+        if count == 0 || count > variables || !suffix_valid {
             return Err(invalid("XPT label count or padding"));
         }
         Ok(Some(Self { count, extended }))

@@ -298,3 +298,26 @@ fn committed_fixtures_cover_long_metadata_and_counted_blanks() {
     let f = XptFile::open(SliceSource(data), XptOpenOptions::default()).unwrap();
     assert_eq!(f.members().unwrap()[0].row_count(), 3);
 }
+
+#[test]
+fn haven_255_two_integer_headers_preserve_counts_and_reject_nonzero_reserve() {
+    for extended in [false, true] {
+        let mut bytes = fixture(extended, Some(1));
+        let labels = marker(&bytes, if extended { "LABELV9" } else { "LABELV8" });
+        let obs = marker(&bytes, "OBSV8");
+        bytes[labels + 48..labels + 80].copy_from_slice(format!("{:15}{:15}  ", 2, 0).as_bytes());
+        bytes[obs + 48..obs + 80].copy_from_slice(format!("{:15}{:15}  ", 1, 0).as_bytes());
+        let file = XptFile::open(bytes.clone(), XptOpenOptions::default()).unwrap();
+        assert_eq!(file.metadata().declared_row_count(), Some(1));
+        assert_eq!(file.members().unwrap()[0].row_count(), 1);
+        assert_eq!(
+            file.metadata().columns()[1].label.as_deref(),
+            Some("b".repeat(256).as_str())
+        );
+        for at in [labels, obs] {
+            let mut bad = bytes.clone();
+            bad[at + 77] = b'1';
+            assert!(!opens(&bad));
+        }
+    }
+}
