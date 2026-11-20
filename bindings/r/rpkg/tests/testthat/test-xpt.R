@@ -62,7 +62,12 @@ test_that("XPORT v8 long metadata interoperates with haven in both directions", 
     expect_equal(names(independent),names(x))
     expect_equal(attr(independent[[1]],"label"),attr(x[[1]],"label"))
     haven::write_xpt(x,reference,version=8,name="LONG_DATASET_NAME")
-    decoded <- read_xpt(reference)
+    decoded <- tryCatch(read_xpt(reference), error=function(e) {
+      bytes <- readBin(reference,"raw",n=file.info(reference)$size)
+      stop(paste0(conditionMessage(e), "; extended=",extended,
+                  "; haven=",packageVersion("haven"),
+                  "; synthetic reference hex=",paste(format(bytes),collapse="")),call.=FALSE)
+    })
     expect_equal(as.numeric(decoded[[1]]),as.numeric(x[[1]]))
     expect_equal(as.character(decoded[[2]]),as.character(x[[2]]))
     expect_equal(attr(decoded[[2]],"label"),attr(x[[2]],"label"))
