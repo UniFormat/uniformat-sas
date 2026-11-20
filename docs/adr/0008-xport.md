@@ -33,3 +33,9 @@ IBM a été ajustée pour reproduire SAS et rester réinscriptible ; les valeurs
 hors plage restent refusées en écriture. La session SAS nommée LATIN1 utilise
 l'octet euro de Windows-1252 : l'option ISO Latin-1 conserve son sens strict.
 Preuves, limites et procédure dans [le rapport](../xpt-sas-validation.md).
+
+## Évolution v8 — 20 novembre 2026
+
+Après fusion du lot v5 validé, les extensions v8 sont implémentées selon
+[l'ADR 0010](0010-xport-v8.md). La détection LIBV8 ouvre maintenant un vrai
+lecteur v8 ; les choix stricts de ce premier ADR restent les défauts d'écriture.
