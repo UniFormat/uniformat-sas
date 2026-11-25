@@ -44,6 +44,12 @@ All workspace dependency locks are tracked; CI checks out sibling repositories a
 
 Re-run dependency and secret scans after changing dependencies or before publishing. Local validation does not configure GitHub branch protection, secret protection or production proxy settings.
 
+The XPORT v8 release preparation updates the workspace lock to `url` 2.5.9
+(and its `form_urlencoded` 1.2.3 dependency), fixing
+[RUSTSEC-2026-0592](https://rustsec.org/advisories/RUSTSEC-2026-0592.html).
+This advisory was published after the v8 PR checks passed and caused the audit
+on the merge commit to fail. No advisory is suppressed for the release.
+
 ## XPORT v5
 
 Le codec borne les descripteurs (9999 et `Limits::max_columns`), les longueurs, les
