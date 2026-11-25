@@ -382,7 +382,7 @@ Le crate et le module sont ceux du cœur `sas7bdat` sauf indication. « n/a v1 �
 - **Journalisation** : le cœur ne journalise pas ; il remonte une liste typée d'avertissements (`ReadReport`) que l'adaptateur transforme en `log`/`warnings.warn`/`warning()`.
 - **Documentation des inconnus** : chaque avertissement porte l'identifiant de `60_inconnues.md` (par exemple `U19`) pour retrouver la décision.
 
-## Extension XPORT (issue #1, premier lot)
+## Extension XPORT (issue #1, v5 et v8)
 
 Le module `uniformat_sas::xpt` est un codec indépendant du format paginé sas7bdat.
 `uniformat_sas_io::XptFile` ouvre les métadonnées du premier membre sans lire les
@@ -390,6 +390,11 @@ observations ; `members()` indexe explicitement le conteneur. `XptWriter` utilis
 `AtomicFile`, valide avant création et interdit tout commit après une erreur.
 Voir [ADR 0008](adr/0008-xport.md) et [spécification XPORT](spec/xpt.md).
 
-TODO(agent) : brancher les adaptateurs Arrow, Format/CLI et langages sur ces API,
-puis valider v8 sur des fixtures indépendantes. Ne pas réutiliser le décodeur IEEE
-de sas7bdat pour les nombres IBM, ni annoncer un nombre de lignes sans indexation.
+Les adaptateurs Arrow, Format/CLI, Python et R utilisent ces API. V8 partage le
+codec numérique et ajoute des extensions de métadonnées bornées ; un compteur
+OBSV8 positif permet d'indexer par plages vérifiées sans parcourir les données.
+Voir [ADR 0010](adr/0010-xport-v8.md). Sans compteur, la règle de padding v5 reste
+appliquée. Ne pas réutiliser le décodeur IEEE de sas7bdat pour les nombres IBM.
+
+TODO(agent) : compléter l'interopérabilité indépendante v8 par une nouvelle
+exécution SAS `%LOC2XPT`/`%XPT2LOC`, en gardant le corpus sous licence hors Git.

@@ -1,4 +1,4 @@
-use super::{bytes, invalid, u16_at, TextEncoding};
+use super::{bytes, invalid, u16_at, TextEncoding, Version};
 use crate::{classify_format, Column, ColumnKind, Limits, Result, SasFormat, StorageKind};
 use std::collections::HashSet;
 
@@ -27,9 +27,21 @@ pub fn parse_namestrs(
     enc: TextEncoding,
     limits: &Limits,
 ) -> Result<(Vec<Column>, u32)> {
+    parse_version(input, count, width, enc, limits, Version::V5)
+}
+
+pub(super) fn parse_version(
+    input: &[u8],
+    count: usize,
+    width: usize,
+    enc: TextEncoding,
+    limits: &Limits,
+    version: Version,
+) -> Result<(Vec<Column>, u32)> {
     if ![135, 140].contains(&width)
+        || (version == Version::V8 && width != 140)
         || count == 0
-        || count > 9999
+        || count > version.columns()
         || count > limits.max_columns as usize
     {
         return Err(invalid("XPT NAMESTR count or size"));
@@ -63,7 +75,7 @@ pub fn parse_namestrs(
                 },
                 StorageKind::Numeric,
             ),
-            (2, 1..=200) => (
+            (2, n) if n > 0 && u32::from(n) <= version.char_len() => (
                 ColumnKind::Char {
                     length: u32::from(length),
                 },
@@ -74,7 +86,11 @@ pub fn parse_namestrs(
         if usize::from(u16_at(input, 6)?) != index.saturating_add(1) {
             return Err(invalid("XPT variable ordinal"));
         }
-        let name = enc.field(bytes(input, 8, 8)?)?;
+        let name = enc.field(bytes(
+            input,
+            if version == Version::V5 { 8 } else { 88 },
+            version.name_len(),
+        )?)?;
         if name.is_empty() || !names.insert(name.to_ascii_uppercase()) {
             return Err(invalid("XPT duplicate or empty name"));
         }
@@ -92,7 +108,20 @@ pub fn parse_namestrs(
             .ok_or_else(|| invalid("XPT observation width budget"))?;
         ranges.push((offset, end));
         row_len = row_len.max(end);
-        let label = enc.field(bytes(input, 16, 40)?)?;
+        let label_len = if version == Version::V8 {
+            u16_at(input, 120)?
+        } else {
+            40
+        };
+        if label_len > 256 {
+            return Err(invalid("XPT label length"));
+        }
+        // A truncated UTF-8 prefix is not independently decodable; LABEL restores it.
+        let label = if label_len > 40 {
+            String::new()
+        } else {
+            enc.field(bytes(input, 16, 40)?)?
+        };
         let format = format(input, 56, enc)?;
         let informat = self::format(input, 72, enc)?;
         let logical = classify_format(

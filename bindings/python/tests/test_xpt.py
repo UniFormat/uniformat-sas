@@ -46,7 +46,7 @@ def test_atomic_failure_and_unknown_options(tmp_path):
         write_xpt(path, pa.table({"VALUE": [1.0, float("inf")]}))
     assert path.read_bytes() == b"previous"
     with pytest.raises(ValueError):
-        write_xpt(path, table(), version=8)
+        write_xpt(path, table(), version=7)
     with pytest.raises(ValueError):
         read_xpt(path, invalid_bytes="replace")
     with pytest.raises(ValueError):

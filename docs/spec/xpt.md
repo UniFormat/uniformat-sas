@@ -1,7 +1,7 @@
 # SAS Transport XPORT — v5
 
-Statut : v5 implémentée et validée sur le corpus externe SAS 9.4 de l'issue #1. CPORT est exclu. La v8 est
-reconnue mais refusée explicitement tant que LABELV8/LABELV9 ne sont pas validés.
+Statut : v5 implémentée et validée sur le corpus externe SAS 9.4 de l'issue #1. CPORT est exclu. Les extensions v8 sont implémentées dans le troisième lot et
+spécifiées séparément dans [xpt-v8.md](xpt-v8.md).
 
 ## Sources et discipline
 
@@ -114,8 +114,8 @@ de formats existante.
 
 - Adaptateur Arrow, sidecars, registre, bindings Python/R et CLI : implémentés
   dans le deuxième lot ; validation SAS v5 documentée séparément.
-- V8 : confirmer sur fixtures indépendantes les extensions NAMESTR (nom long),
-  LABELV8/LABELV9, les limites et la sémantique du compteur OBSV8 avant activation.
+- V8 : noms longs, LABELV8/LABELV9 et OBSV8 implémentés ; tests croisés ReadStat/
+  haven, fixtures synthétiques et limites dans [la spécification v8](xpt-v8.md).
 
 L'écrivain refuse aussi une paire de marqueurs MEMBER/DSCRPTR alignée dans les
 observations, même à cheval sur deux lignes : il n'existe pas d'échappement XPORT

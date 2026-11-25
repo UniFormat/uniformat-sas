@@ -1,4 +1,4 @@
-"""SAS Transport v5, with explicit encodings and bounded materialization."""
+"""SAS Transport v5/v8, with explicit encodings and bounded materialization."""
 from __future__ import annotations
 import os
 from . import _native, _pa, _prepare_table, metadata_from_schema
@@ -48,16 +48,20 @@ def xpt_schema(path, **options):
 
 def write_xpt(path, data, *, column_labels=None, formats=None, informats=None,
               lengths=None, missing_suffix="__missing", **options):
-    """Write XPORT v5 atomically, rejecting truncation and unrepresentable values.
+    """Write XPORT v5/v8 atomically, rejecting truncation and unrepresentable values.
 
     Accepts Arrow, pandas, or polars. Text widths are measured in encoded bytes
     when omitted, within max_buffer_bytes (256 MiB). Header dates default to
-    01JAN00:00:00:00. Options: encoding, table_name, table_label, created, modified.
+    01JAN00:00:00:00. Options: version (5 by default, or 8), encoding, table_name, table_label,
+    created, modified, row_count (an exact count for v8 streaming inputs).
+    Materialized v8 tables automatically declare their number of observations.
     Streaming inputs with widths in their schema are consumed without collection.
     """
     if not isinstance(data, _pa().RecordBatchReader) or any(
             x is not None for x in (column_labels, formats, informats, lengths)):
         data = _prepare_table(data, column_labels, formats, informats, lengths, missing_suffix)
+    if str(options.get("version", 5)) == "8" and isinstance(data, _pa().Table):
+        options.setdefault("row_count", data.num_rows)
     rows = _native.write_xpt(os.fspath(path), data,
                              _options(dict(options, missing_suffix=missing_suffix)))
     return {"rows": rows, "warnings": []}
@@ -70,4 +74,4 @@ def _metadata(path, **options):
 from uniformat_io.core import Format
 XPT_FORMAT = Format(name="xpt", extensions=("xpt",), read_table=read_xpt_table,
                     write_table=write_xpt, schema=xpt_schema, metadata=_metadata,
-                    description="SAS Transport v5 (.xpt)")
+                    description="SAS Transport v5/v8 (.xpt)")

@@ -29,7 +29,7 @@ Errors: `SasError` (a `uniformat_io.core.UniFormatError`) with `SasFormatError`,
 Status: **not published** (private repository until the licensing decision is made). Local paths only. Build:
 `maturin develop --release`. The `uniformat-core` package must be installed (it provides `uniformat_io.core`).
 
-## SAS Transport v5
+## SAS Transport v5/v8
 
 `read_xpt(path, **options)` returns an Arrow stream; `read_xpt_table` collects it
 within `max_table_bytes` (256 MiB by default). `xpt_schema` reads the first member's
@@ -43,3 +43,11 @@ and `informats` override field metadata. Encoding defaults to strict UTF-8;
 `latin1` and `windows-1252` must be explicit. Use `missing="sidecar"` to preserve
 all special SAS missing codes during conversions. Header dates are deterministic
 unless explicitly supplied as `ddMMMyy:hh:mm:ss` strings.
+
+V8 input is detected automatically. Use `write_xpt(path, table, version=8)` for
+32-byte names, 256-byte variable labels and character widths up to 32767 bytes.
+V5 remains the default. Dataset labels are limited to 40 bytes in both versions.
+Materialized v8 tables declare their count automatically. For a stream, pass
+`row_count=N` to preserve trailing blank observations; an incorrect count fails
+atomically. Without a count, ambiguous tails are rejected. Long format/informat
+metadata uses LABELV9. The v5 SAS corpus is not evidence of SAS v8 validation.
